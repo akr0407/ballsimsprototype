@@ -1652,6 +1652,7 @@ document.getElementById('btnLoadPreset').addEventListener('click', () => {
         );
     }
     activateModeSettings(saved.mode, false);
+    setOutputOrientation(simConfig.outputOrientation || 'portrait', false);
     const audio = entry.audio || {};
     if (Number.isFinite(audio.volume)) sound.volume = Math.min(1, Math.max(0, audio.volume));
     for (const key of ['enabled', 'instrument', 'deathSound', 'escapeSound', 'polyBass']) {
@@ -1904,10 +1905,55 @@ for (const button of document.querySelectorAll('.speed-pill')) {
     });
 }
 
+function syncOrientationControls() {
+    const orientation = simConfig.outputOrientation === 'landscape' ? 'landscape' : 'portrait';
+    document.getElementById('gameCanvasFrame').dataset.orientation = orientation;
+    for (const button of document.querySelectorAll('[data-orientation-option]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.orientationOption === orientation));
+    }
+}
+
+function setOutputOrientation(orientation, reset = true) {
+    if (mediaRecorder?.state === 'recording') return false;
+    const next = orientation === 'landscape' ? 'landscape' : 'portrait';
+    simConfig.outputOrientation = next;
+    const changed = setSimulationOrientation(next);
+    recordingCanvas.width = next === 'landscape' ? 1920 : 1080;
+    recordingCanvas.height = next === 'landscape' ? 1080 : 1920;
+    syncOrientationControls();
+    const label = next === 'landscape' ? '1920×1080' : '1080×1920';
+    document.getElementById('recordStatus').textContent = 'Preview ' + label + ' · not recording';
+    if (reset && changed) resetSimulation();
+    return true;
+}
+
+function setMobileSettings(open, tab = 'global') {
+    document.body.classList.toggle('settings-drawer-open', open);
+    document.getElementById('globalSettingsPanel').classList.toggle('mobile-active', open && tab === 'global');
+    document.getElementById('modeSettingsPanel').classList.toggle('mobile-active', open && tab === 'mode');
+    for (const button of document.querySelectorAll('[data-settings-tab]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.settingsTab === tab));
+    }
+}
+
+document.querySelectorAll('[data-orientation-option]').forEach(button => {
+    button.addEventListener('click', () => setOutputOrientation(button.dataset.orientationOption));
+});
+document.getElementById('btnOpenSettings').addEventListener('click', () => setMobileSettings(true, 'global'));
+document.getElementById('btnCloseMobileSettings').addEventListener('click', () => setMobileSettings(false));
+document.getElementById('mobileSettingsBackdrop').addEventListener('click', () => setMobileSettings(false));
+document.querySelectorAll('[data-settings-tab]').forEach(button => {
+    button.addEventListener('click', () => setMobileSettings(true, button.dataset.settingsTab));
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') setMobileSettings(false);
+});
+
 function setRecordingUI(isRecording, message) {
     const button = document.getElementById('btnRecord');
     button.textContent = isRecording ? '⏹ Stop Recording' : '⏺ Record WebM';
     document.getElementById('recordStatus').textContent = message;
+    document.querySelectorAll('[data-orientation-option]').forEach(option => { option.disabled = isRecording; });
 }
 
 function stopVideoRecording() {
@@ -1970,7 +2016,7 @@ async function startVideoRecording() {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `ballsim-${simConfig.mode}-${simConfig.seed}.webm`;
+            link.download = 'ballsim-' + simConfig.mode + '-' + simConfig.seed + '-' + (simConfig.outputOrientation || 'portrait') + '.webm';
             link.click();
             setTimeout(() => URL.revokeObjectURL(url), 60000);
             setRecordingUI(false, `Tersimpan · ${(blob.size / 1048576).toFixed(1)} MB`);
@@ -1998,7 +2044,7 @@ async function startVideoRecording() {
         stopVideoRecording();
     };
     recorder.start(250);
-    setRecordingUI(true, `Merekam ${duration} detik · 1080×1920 · 1×`);
+    setRecordingUI(true, 'Merekam ' + duration + ' detik · ' + recordingCanvas.width + '×' + recordingCanvas.height + ' · 1×');
     recordingTimer = setTimeout(stopVideoRecording, duration * 1000);
 }
 
@@ -2108,5 +2154,6 @@ function animate() {
 // Boot directly on Multiply Gates Center so you can test it immediately!
 document.getElementById('inpMelodyNotes').value = sound.sequence.join(' ');
 searchMelodyLibrary();
+setOutputOrientation(simConfig.outputOrientation || 'portrait', false);
 selectGameMode('multiply_gates');
 requestAnimationFrame(animate);

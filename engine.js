@@ -9,15 +9,32 @@
 
 const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
-const SCALE_1080 = canvas.width / 1080; // 0.5 exact scale factor
+let SCALE_1080 = Math.min(canvas.width, canvas.height) / 1080;
 
 const trailCanvas = document.createElement('canvas');
 trailCanvas.width = canvas.width;
 trailCanvas.height = canvas.height;
 const trailCtx = trailCanvas.getContext('2d');
 
-const CX = canvas.width / 2;
-const CY = canvas.height / 2 + 12;
+let CX = canvas.width / 2;
+let CY = canvas.height / 2 + 12;
+
+function setSimulationOrientation(orientation) {
+    const landscape = orientation === 'landscape';
+    const width = landscape ? 960 : 540;
+    const height = landscape ? 540 : 960;
+    if (canvas.width === width && canvas.height === height) return false;
+
+    canvas.width = width;
+    canvas.height = height;
+    trailCanvas.width = width;
+    trailCanvas.height = height;
+    SCALE_1080 = Math.min(width, height) / 1080;
+    CX = width / 2;
+    CY = height / 2 + 12;
+    trailCtx.clearRect(0, 0, width, height);
+    return true;
+}
 
 let customBallImage = null;
 let customCenterImage = null;
@@ -25,6 +42,7 @@ let autoBatchEnabled = false;
 
 let simConfig = {
     mode: 'multiply_gates',
+    outputOrientation: 'portrait',
     seed: 1042,
     circleRadiusRef: 460,
     outlineThicknessRef: 8,

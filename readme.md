@@ -28,6 +28,8 @@ The Save / Load Presets controls store named configuration snapshots in browser 
 
 ## Recording and music
 
+The preview and WebM export support Portrait (1080×1920) and Landscape (1920×1080). Orientation is a global setting and is included in saved presets.
+
 The canvas can be recorded to WebM at 1080×1920 for a chosen duration. Preview speed is adjustable from 1× to 8×; recording forces 1× and restores the preview speed afterward. Find Simulation searches deterministic seeds for a run whose first completion is close to the selected target duration.
 
 Global visual layers can be combined: ball glow, wall glow, color trails, trail thickness, and confetti, shatter, and shockwave particles each have independent controls. These particle switches affect the corresponding effects wherever a mode emits them. Older presets with the single effects switch migrate that value to all three layers.

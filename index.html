@@ -64,12 +64,79 @@
     .canvas-shadow {
       box-shadow: 0 0 60px rgba(0, 0, 0, 0.92), 0 0 28px rgba(212, 255, 51, 0.08);
     }
+
+    :root { color-scheme: dark; --studio-bg:#090a0c; --studio-panel:#111317; --studio-line:#25282d; --studio-muted:#9298a1; }
+    body { background:var(--studio-bg); color:#eceef0; }
+    .studio-topbar { display:grid!important; grid-template-columns:auto minmax(0,1fr) auto!important; align-items:center; gap:20px; padding:10px 20px; background:rgba(12,13,15,.96); border-color:var(--studio-line); }
+    #topModePills { min-width:0; max-width:none; scrollbar-width:thin; }
+    .mode-pill { border-radius:7px!important; background:#14161a!important; border-color:#292c31!important; color:#b7bbc1!important; font-size:11px!important; font-weight:600!important; padding:6px 10px!important; }
+    .mode-pill.active { color:#10120c!important; background:var(--lime-accent)!important; border-color:var(--lime-accent)!important; box-shadow:none!important; }
+    .studio-workspace { display:grid!important; grid-template-columns:minmax(250px,300px) minmax(0,1fr) minmax(250px,300px)!important; align-items:start; gap:14px; padding:14px; max-width:1920px; }
+    .studio-panel { min-width:0; background:var(--studio-panel)!important; border:1px solid var(--studio-line)!important; border-radius:12px!important; box-shadow:none!important; }
+    .studio-panel .bg-gradient-to-br { background:#15171b!important; border-color:var(--studio-line)!important; }
+    .studio-panel [class~="bg-[#141722]"], .studio-panel [class~="bg-[#161926]"] { background:#15171b!important; }
+    #previewPanel { min-width:0; background:transparent!important; border:0!important; padding:0!important; }
+    #canvasModeTitle { font-size:15px; letter-spacing:-.02em; }
+    #canvasModeSubtitle { max-width:56ch; line-height:1.45; }
+    .game-canvas-frame { width:min(100%,440px); aspect-ratio:9 / 16; border-color:#272a30!important; box-shadow:0 18px 60px rgba(0,0,0,.32)!important; transition:width .2s ease, aspect-ratio .2s ease; }
+    .game-canvas-frame[data-orientation="landscape"] { width:min(100%,760px); aspect-ratio:16 / 9; }
+    #simCanvas { display:block; width:100%; height:100%; }
+    .orientation-control { display:flex; gap:2px; align-items:center; padding:3px; border:1px solid var(--studio-line); border-radius:8px; background:#111317; }
+    .orientation-control button { padding:6px 9px; border-radius:6px; color:#a9adb4; font-size:11px; font-weight:700; }
+    .orientation-control button[aria-pressed="true"] { background:#25282d; color:#f5f6f7; }
+    .mobile-only { display:none; }
+    .studio-topbar button, .studio-panel button, #previewPanel button { box-shadow:none!important; }
+    .studio-panel input:not([type="range"]):not([type="checkbox"]):not([type="color"]), .studio-panel select, #previewPanel input:not([type="range"]) { border-color:#2b2e33!important; background:#0d0f12!important; border-radius:7px!important; }
+    .studio-panel input[type="range"] { accent-color:var(--lime-accent); }
+    .canvas-shadow { box-shadow:0 18px 60px rgba(0,0,0,.32)!important; }
+    #mobileSettingsBackdrop, #mobileSettingsToolbar { display:none; }
+    @media (min-width:1200px) {
+      #globalSettingsPanel { grid-column:1; position:sticky; top:82px; max-height:calc(100vh - 96px); overflow-y:auto; }
+      #previewPanel { grid-column:2; }
+      #modeSettingsPanel { grid-column:3; position:sticky; top:82px; max-height:calc(100vh - 96px); overflow-y:auto; }
+    }
+    @media (max-width:1199px) {
+      .studio-workspace { grid-template-columns:repeat(2,minmax(0,1fr))!important; }
+      #previewPanel { grid-column:1 / -1; grid-row:1; }
+      #globalSettingsPanel { grid-column:1; }
+      #modeSettingsPanel { grid-column:2; }
+      .studio-topbar { grid-template-columns:auto minmax(0,1fr)!important; }
+      #topModePills { grid-column:1 / -1; grid-row:2; }
+      .studio-topbar > div:last-child { grid-column:2; grid-row:1; justify-self:end; }
+    }
+    @media (max-width:767px) {
+      .studio-topbar { grid-template-columns:minmax(0,1fr) auto!important; gap:8px 12px; padding:8px 12px; }
+      .studio-topbar > div:first-child { min-width:0; }
+      .studio-topbar h1 { font-size:13px!important; }
+      .studio-topbar p { display:none; }
+      .studio-topbar > div:last-child { grid-column:2; grid-row:1; }
+      #btnBatchMode { display:none; }
+      #btnRecord { padding:7px 9px!important; font-size:10px!important; }
+      #topModePills { grid-column:1 / -1; grid-row:2; margin:0 -2px; }
+      .studio-workspace { display:block!important; padding:10px; }
+      #previewPanel { margin:0 0 12px; }
+      #globalSettingsPanel, #modeSettingsPanel { display:none; }
+      .studio-panel { padding:12px!important; }
+      .game-canvas-frame { width:min(100%,420px); }
+      .game-canvas-frame[data-orientation="landscape"] { width:100%; }
+      .mobile-only { display:inline-flex; }
+      body.settings-drawer-open #mobileSettingsBackdrop { display:block; position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.68); backdrop-filter:blur(3px); }
+      body.settings-drawer-open #mobileSettingsToolbar { display:flex; position:fixed; top:10px; left:10px; right:10px; z-index:72; justify-content:space-between; gap:8px; padding:8px; border:1px solid var(--studio-line); border-radius:10px; background:#111317; }
+      body.settings-drawer-open #mobileSettingsToolbar button { flex:1; padding:8px; border-radius:7px; color:#b7bbc1; font-size:12px; font-weight:700; }
+      body.settings-drawer-open #mobileSettingsToolbar button[aria-pressed="true"] { background:var(--lime-accent); color:#10120c; }
+      body.settings-drawer-open #globalSettingsPanel.mobile-active, body.settings-drawer-open #modeSettingsPanel.mobile-active { display:flex; position:fixed; z-index:70; top:62px; left:10px; right:10px; bottom:10px; width:auto; max-height:none; overflow-y:auto; margin:0; }
+      body.settings-drawer-open #globalSettingsPanel:not(.mobile-active), body.settings-drawer-open #modeSettingsPanel:not(.mobile-active) { display:none; }
+      body.settings-drawer-open { overflow:hidden; }
+      #previewPanel > .preview-toolbar { align-items:flex-start; }
+      .orientation-control { flex:none; }
+    }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; animation:none!important; } }
   </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col studio-body">
 
   <!-- TOP NAVBAR -->
-  <header class="border-b border-slate-800/80 bg-[#0b0d14]/95 backdrop-blur-md px-5 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
+  <header class="studio-topbar border-b border-slate-800/80 bg-[#0b0d14]/95 backdrop-blur-md px-5 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-xl bg-[#d4ff33] text-slate-950 flex items-center justify-center font-extrabold text-lg shadow-lg shadow-[#d4ff33]/25">
         B
@@ -79,7 +146,7 @@
           <h1 class="font-extrabold text-base tracking-tight text-white">BouncyLab × BallSimulator</h1>
           <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#d4ff33]/20 text-[#d4ff33] border border-[#d4ff33]/40">v6.0 Modular</span>
         </div>
-        <p class="text-[11px] text-slate-400">16 Authentic Modes • Spiked Spiral Shards • Multiply Gate Mesh • Beaded Spiral Progress • Bouncy Merge</p>
+        <p class="text-[11px] text-slate-400">22 Modes • Physics • Visuals • Audio</p>
       </div>
     </div>
 
@@ -98,11 +165,11 @@
   </header>
 
   <!-- MAIN WORKSPACE -->
-  <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-[1780px] w-full mx-auto">
+  <main class="studio-workspace flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-[1780px] w-full mx-auto">
 
     <!-- LEFT PANEL: VIRAL RETENTION HOOKS, MERGE TIERS, COUNTRY ROSTER, MIDI SEARCH & PRESETS -->
-    <section class="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 bg-[#10121a] border border-slate-800/90 rounded-2xl p-4 h-fit lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto order-2 lg:order-1">
-      
+    <section id="globalSettingsPanel" class="studio-panel lg:col-span-4 xl:col-span-3 flex flex-col gap-4 bg-[#10121a] border border-slate-800/90 rounded-2xl p-4 h-fit lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto order-2 lg:order-1">
+
       <!-- 1. RETENTION HOOKS (TOP + BOTTOM SUBTITLE LIKE VIDEO REFS), SUDDEN DEATH & SPECTRUM FX -->
       <div class="bg-gradient-to-br from-[#d4ff33]/10 via-[#141722] to-indigo-950/30 border border-[#d4ff33]/30 rounded-xl p-3.5 space-y-2.5">
         <div class="flex items-center justify-between">
@@ -376,15 +443,20 @@
     </section>
 
     <!-- CENTER PANEL: 9:16 VERTICAL SIMULATION CANVAS -->
-    <section class="lg:col-span-4 xl:col-span-6 flex flex-col items-center justify-start bg-[#0c0e14] border border-slate-800/80 rounded-2xl p-4 relative order-1 lg:order-2">
-      
+    <section id="previewPanel" class="studio-panel lg:col-span-4 xl:col-span-6 flex flex-col items-center justify-start bg-[#0c0e14] border border-slate-800/80 rounded-2xl p-4 relative order-1 lg:order-2">
+
       <!-- Top Bar Above Canvas -->
-      <div class="w-full max-w-[440px] flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800/80">
+      <div class="preview-toolbar w-full max-w-[760px] flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800/80">
         <div>
           <h2 id="canvasModeTitle" class="font-extrabold text-sm text-white">Spiked Spiral Center</h2>
           <p id="canvasModeSubtitle" class="text-[11px] text-slate-400">Rainbow spiked spiral labyrinth with glass shard shattering!</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <button id="btnOpenSettings" class="mobile-only px-2.5 py-1.5 rounded-lg bg-[#181b26] border border-slate-700 text-xs font-bold">⚙ Settings</button>
+          <div class="orientation-control" role="group" aria-label="Game and recording orientation">
+            <button type="button" data-orientation-option="portrait" aria-pressed="true">Portrait</button>
+            <button type="button" data-orientation-option="landscape" aria-pressed="false">Landscape</button>
+          </div>
           <div id="speedControls" class="flex items-center gap-1 bg-[#141722] border border-slate-800 rounded-lg px-1.5 py-1">
             <span class="text-[10px] text-slate-400 px-1">Preview</span>
             <button type="button" data-speed="1" class="speed-pill px-1.5 py-1 rounded text-[10px] font-bold text-white bg-slate-700">1×</button>
@@ -405,8 +477,8 @@
         </div>
       </div>
 
-      <!-- Canvas Container (9:16 Aspect Ratio) -->
-      <div class="relative w-full max-w-[440px] aspect-[9/16] rounded-2xl overflow-hidden border border-slate-800/90 canvas-shadow bg-black">
+      <!-- Simulation frame follows the selected export orientation. -->
+      <div id="gameCanvasFrame" data-orientation="portrait" class="game-canvas-frame relative rounded-2xl overflow-hidden border border-slate-800/90 canvas-shadow bg-black">
         <canvas id="simCanvas" width="540" height="960" class="w-full h-full block"></canvas>
 
         <!-- Floating Status Banner -->
@@ -416,7 +488,7 @@
       </div>
 
       <!-- Footer Stats Below Canvas -->
-      <div class="w-full max-w-[440px] mt-2.5 flex items-center justify-between text-xs mono text-slate-400 px-1">
+      <div class="w-full max-w-[760px] mt-2.5 flex items-center justify-between text-xs mono text-slate-400 px-1">
         <div class="flex items-center gap-4">
           <span><span id="lblStatLost">Balls lost</span> <b id="statBallsLost" class="text-white ml-1">0</b></span>
           <span><span id="lblStatEscaped">Progress</span> <b id="statEscapedCount" class="text-[#d4ff33] ml-1">0</b></span>
@@ -455,8 +527,8 @@
     </section>
 
     <!-- RIGHT PANEL: DYNAMIC MODE-BASED SETTINGS PANEL -->
-    <section class="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 bg-[#10121a] border border-slate-800/90 rounded-2xl p-4 h-fit lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto order-3">
-      
+    <section id="modeSettingsPanel" class="studio-panel lg:col-span-4 xl:col-span-3 flex flex-col gap-4 bg-[#10121a] border border-slate-800/90 rounded-2xl p-4 h-fit lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto order-3">
+
       <!-- Active Mode Settings Header -->
       <div class="bg-[#161926] border border-[#d4ff33]/30 rounded-xl p-3 flex items-center justify-between">
         <div>
@@ -946,6 +1018,12 @@
       </div>
 
     </section>
+    <div id="mobileSettingsBackdrop" aria-hidden="true"></div>
+    <div id="mobileSettingsToolbar" role="dialog" aria-label="Settings">
+      <button type="button" data-settings-tab="global" aria-pressed="true">Global settings</button>
+      <button type="button" data-settings-tab="mode" aria-pressed="false">Mode settings</button>
+      <button type="button" id="btnCloseMobileSettings" aria-label="Close settings">Done</button>
+    </div>
   </main>
 
   <!-- MODULAR SCRIPTS (WORKS DIRECTLY WITHOUT A WEB SERVER) -->
