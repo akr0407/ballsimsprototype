@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BallSimulator & BouncyLab Studio v6.0 — Modular Master Edition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+    :root {
+      --lime-accent: #d4ff33;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #08090d;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0c0e14; }
+    ::-webkit-scrollbar-thumb { background: #262b3d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #d4ff33; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1e2230;
+      height: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      background: #d4ff33;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(212, 255, 51, 0.55);
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      background: transparent;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch {
+      border: 2px solid #2e344e;
+      border-radius: 8px;
+    }
+
+    .mode-pill.active {
+      background-color: rgba(212, 255, 51, 0.16);
+      border-color: #d4ff33;
+      color: #d4ff33;
+      box-shadow: 0 0 14px rgba(212, 255, 51, 0.22);
+    }
+    .canvas-shadow {
+      box-shadow: 0 0 60px rgba(0, 0, 0, 0.92), 0 0 28px rgba(212, 255, 51, 0.08);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP NAVBAR -->
+  <header class="border-b border-slate-800/80 bg-[#0b0d14]/95 backdrop-blur-md px-5 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-[#d4ff33] text-slate-950 flex items-center justify-center font-extrabold text-lg shadow-lg shadow-[#d4ff33]/25">
+        B
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-extrabold text-base tracking-tight text-white">BouncyLab × BallSimulator</h1>
+          <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#d4ff33]/20 text-[#d4ff33] border border-[#d4ff33]/40">v6.0 Modular</span>
+        </div>
+        <p class="text-[11px] text-slate-400">16 Authentic Modes • Spiked Spiral Shards • Multiply Gate Mesh • Beaded Spiral Progress • Bouncy Merge</p>
+      </div>
+    </div>
+
+    <!-- Quick Mode Pills Bar -->
+    <div id="topModePills" class="flex items-center gap-1.5 overflow-x-auto max-w-full py-1"></div>
+
+    <!-- Action Controls -->
+    <div class="flex items-center gap-2">
+      <button id="btnBatchMode" class="px-3 py-1.5 rounded-lg bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:bg-purple-600/50 text-xs font-bold transition" title="Otomatis rekam beruntun saat selesai">
+        🔁 Auto-Batch: OFF
+      </button>
+      <button id="btnRecord" class="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-rose-600/30 transition">
+        ⏺ Record WebM
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-[1780px] w-full mx-auto">
+
+    <!-- LEFT PANEL: VIRAL RETENTION HOOKS, MERGE TIERS, COUNTRY ROSTER, MIDI SEARCH & PRESETS -->
+    <section class="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 bg-[#10121a] border border-slate-800/90 rounded-2xl p-4 h-fit lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto order-2 lg:order-1">
+      
+      <!-- 1. RETENTION HOOKS (TOP + BOTTOM SUBTITLE LIKE VIDEO REFS), SUDDEN DEATH & SPECTRUM FX -->
+      <div class="bg-gradient-to-br from-[#d4ff33]/10 via-[#141722] to-indigo-950/30 border border-[#d4ff33]/30 rounded-xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-[#d4ff33]">
+            🔥 Viral Retention & Next-Gen FX
+          </h2>
+          <span class="text-[9px] mono px-1.5 py-0.5 rounded bg-[#d4ff33]/20 text-[#d4ff33] font-bold">v6.0</span>
+        </div>
+
+        <div>
+          <label class="text-[10px] text-slate-400 block mb-1">Top Engagement Hook Text</label>
+          <select id="selHookPreset" class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white mb-1.5">
+            <option value="How Many Balls to Reach the Center ?">💎 How Many Balls to Reach the Center ?</option>
+            <option value="Will the Ball Multiply ?">✖️ Will the Ball Multiply ?</option>
+            <option value="Will the balls get to center ?">🌀 Will the balls get to center ?</option>
+            <option value="Will the Ball Merge Into Final Form?">🧪 Will the Ball Merge Into Final Form?</option>
+            <option value="WAIT UNTIL IT ESCAPES... 🤯">🤯 Wait until it escapes...</option>
+            <option value="99% FAIL BEFORE THE LAST RING! 😱">😱 99% fail before the last ring!</option>
+            <option value="COMMENT YOUR COUNTRY BEFORE IT DIES! 🏳️">🏳️ Comment your country!</option>
+            <option value="custom">✏️ Custom Hook Text...</option>
+          </select>
+          <input id="inpCustomHook" type="text" value="How Many Balls to Reach the Center ?" class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-bold text-[#d4ff33]" />
+        </div>
+
+        <div>
+          <label class="text-[10px] text-slate-400 block mb-1">Bottom Caption Text (e.g. "Did you recognize the sounds?")</label>
+          <input id="inpBottomHook" type="text" value="Did you recognize the sounds?" placeholder="Kosongkan jika tidak dipakai..." class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-semibold text-white" />
+        </div>
+
+        <div class="space-y-1.5 pt-1">
+          <label class="flex items-center justify-between text-xs cursor-pointer">
+            <span class="text-slate-300">🔊 Audio-Reactive Spectrum Ring</span>
+            <input id="chkAudioSpectrum" type="checkbox" class="accent-[#d4ff33] w-4 h-4" />
+          </label>
+          <label class="flex items-center justify-between text-xs cursor-pointer">
+            <span class="text-slate-300">🎹 Polyphonic Bass & Chord Layer</span>
+            <input id="chkPolyBass" type="checkbox" checked class="accent-[#d4ff33] w-4 h-4" />
+          </label>
+          <label class="flex items-center justify-between text-xs cursor-pointer">
+            <span class="text-slate-300">💥 Floating RPG Damage & Hit Numbers</span>
+            <input id="chkFloatingText" type="checkbox" checked class="accent-[#d4ff33] w-4 h-4" />
+          </label>
+          <label class="flex items-center justify-between text-xs cursor-pointer">
+            <span class="text-slate-300">⏳ Sudden Death Shrinking Ring (30s+)</span>
+            <input id="chkSuddenDeath" type="checkbox" class="accent-[#d4ff33] w-4 h-4" />
+          </label>
+        </div>
+      </div>
+
+      <!-- 2. MERGE TIER CUSTOMIZER (AUTO-SHOWN ON MERGE MODE) -->
+      <div id="leftCardMergeTiers" class="bg-gradient-to-br from-emerald-500/10 via-[#141722] to-cyan-950/30 border border-emerald-400/40 rounded-xl p-3.5 space-y-2.5 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-emerald-300">
+            🧪 Merge Tier Customizer (8 Sizes)
+          </h2>
+          <span class="text-[9px] mono px-1.5 py-0.5 rounded bg-emerald-400/20 text-emerald-300 font-bold">MERGE MODE</span>
+        </div>
+
+        <div>
+          <label class="text-[10px] text-slate-400 block mb-1">Preset Tema Karakter & Suara</label>
+          <select id="selMergeTheme" class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white">
+            <option value="video1_faces">😱 Video 1: Viral Vector Faces (White ➔ Red)</option>
+            <option value="video2_cats">🐱 Video 2: Cat Meme Cutouts + Meow SFX</option>
+            <option value="animals_emoji">🐼 Classic Cute Animal Emojis</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Gaya Render Gambar</label>
+            <select id="selMergeSpriteMode" class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-semibold text-white">
+              <option value="circle">🟢 Circular Ball</option>
+              <option value="cutout">✂️ Cutout Sprite</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Merge / Bounce SFX</label>
+            <select id="selMergeSoundMode" class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-semibold text-white">
+              <option value="pop">🫧 Pop + Melody</option>
+              <option value="meow">🐱 Meow Synth (Video 2)</option>
+              <option value="custom_sfx">🔊 Custom Audio File</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between bg-[#0b0d14] px-2.5 py-1.5 rounded-lg border border-slate-800 text-[11px]">
+          <span id="customSfxStatus" class="text-slate-400 truncate">Upload suara Meow/SFX (.mp3/.wav):</span>
+          <label class="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer shrink-0">
+            🔊 Pilih Audio
+            <input id="inpCustomMergeAudio" type="file" accept="audio/*" class="hidden" />
+          </label>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+            <span>Custom Emoji / Upload Foto Tiap Ukuran:</span>
+            <button id="btnResetMergeTiers" class="text-emerald-400 hover:underline font-bold">Reset Tiers</button>
+          </div>
+          <div id="mergeTierList" class="space-y-1.5 max-h-52 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+
+      <!-- 3. COUNTRY BALLS ROSTER SELECTOR -->
+      <div id="leftCardCountryRoster" class="bg-[#141722] border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-cyan-300">
+            🏳️ Country Balls Roster Manager
+          </h2>
+          <span class="text-[10px] text-slate-400 mono">For Royale & Web Battle</span>
+        </div>
+        <select id="selCountryPack" class="w-full bg-[#0b0d14] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white">
+          <option value="asean">🌴 Derby ASEAN (ID, MY, TH, VN, PH, SG, MM, KH)</option>
+          <option value="world">🌍 World Superpowers (ID, JP, BR, US, KR, DE, FR, GB, AR, PT)</option>
+          <option value="europe">⚽ European Giants (DE, FR, GB, IT, ES, NL, PT, BE)</option>
+          <option value="asia">🐉 Asian Cup (ID, JP, KR, SA, AU, IR, UZ, TH)</option>
+        </select>
+      </div>
+
+      <!-- 4. YOUTUBE & SPOTIFY MELODY / MIDI SEARCH ENGINE -->
+      <div class="bg-[#141722] border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-white">
+            🎧 YouTube / Spotify MIDI Search
+          </h2>
+          <div class="flex gap-1">
+            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">YT</span>
+            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Spotify</span>
+          </div>
+        </div>
+
+        <div class="flex gap-1.5">
+          <input id="inpSongSearch" type="text" placeholder="Ketik judul lagu atau paste link YT/Spotify..." class="flex-1 bg-[#0b0d14] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-[#d4ff33] outline-none" />
+          <button id="btnSongSearch" class="px-3 py-1.5 rounded-lg bg-[#d4ff33] text-slate-950 font-extrabold text-xs">Cari</button>
+        </div>
+
+        <div id="songSearchResults" class="space-y-1 max-h-32 overflow-y-auto"></div>
+
+        <div class="pt-1 border-t border-slate-800 flex items-center justify-between text-[11px]">
+          <span id="midiStatusText" class="text-slate-400">Import file MIDI lokal:</span>
+          <label class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white font-bold cursor-pointer border border-slate-700">
+            📂 Pilih .MID
+            <input id="inpMidiFile" type="file" accept=".mid,.midi" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <!-- 5. CREATOR PRO: CUSTOM BALL (IMAGE/EMOJI) & CENTER CRYSTAL TARGET -->
+      <div class="bg-[#141722] border border-slate-800 rounded-xl p-3.5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-amber-300">👑 Ball & Center Target Customizer</h2>
+          <label class="flex items-center gap-1 text-[11px] text-slate-300 cursor-pointer">
+            <input id="chkEmoji" type="checkbox" class="accent-[#d4ff33]" />
+            <span>Eye Dots</span>
+          </label>
+        </div>
+
+        <!-- A. CUSTOM BALL TEXTURE OR EMOJI -->
+        <div class="bg-[#0b0d14] p-2.5 rounded-lg border border-slate-800 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div id="ballThumbPreview" class="w-8 h-8 rounded-full bg-emerald-400 border border-white flex items-center justify-center text-xs overflow-hidden shrink-0">
+                🧑🏽
+              </div>
+              <div>
+                <div class="text-[11px] font-bold text-white">Ball Image / Emoji</div>
+                <div id="ballTextureStatus" class="text-[10px] text-slate-400">Meme Avatar / Upload</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <label class="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-[11px] font-bold cursor-pointer">
+                📷 Upload
+                <input id="inpBallImage" type="file" accept="image/*" class="hidden" />
+              </label>
+              <button id="btnClearBallImage" class="hidden px-2 py-1 rounded bg-rose-600/30 text-rose-300 text-[11px] font-bold">✕</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+            <span class="text-[10px] text-slate-400">Atau pakai Emoji Bola:</span>
+            <input id="inpCustomBallEmoji" type="text" placeholder="Ketik emoji (mis: ⚽, 🔥, 😭)" class="w-36 bg-[#141722] border border-slate-700 rounded px-2 py-0.5 text-xs text-center text-white" />
+          </div>
+        </div>
+
+        <!-- B. CUSTOM CENTER CRYSTAL / TARGET (IMAGE OR EMOJI) -->
+        <div class="bg-[#0b0d14] p-2.5 rounded-lg border border-slate-800 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div id="centerThumbPreview" class="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-400 flex items-center justify-center text-xs overflow-hidden shrink-0">
+                💎
+              </div>
+              <div>
+                <div class="text-[11px] font-bold text-cyan-300">Center Crystal Target</div>
+                <div id="centerTextureStatus" class="text-[10px] text-slate-400">Default Faceted Diamond</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <label class="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-[11px] font-bold text-white cursor-pointer">
+                📷 Upload
+                <input id="inpCenterImage" type="file" accept="image/*" class="hidden" />
+              </label>
+              <button id="btnClearCenterImage" class="hidden px-2 py-1 rounded bg-rose-600/30 text-rose-300 text-[11px] font-bold">✕</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800/80">
+            <input id="inpCenterEmoji" type="text" placeholder="Emoji Tengah (💎/👑)" class="bg-[#141722] border border-slate-700 rounded px-2 py-1 text-[11px] text-center text-white" />
+            <select id="selCenterShape" class="bg-[#141722] border border-slate-700 rounded px-2 py-1 text-[11px] text-white font-semibold">
+              <option value="diamond">💎 Diamond Clip</option>
+              <option value="circle">🟢 Circle Clip</option>
+              <option value="cutout">✂️ Full Cutout</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- C. WATERMARK -->
+        <div class="grid grid-cols-2 gap-2">
+          <input id="inpWatermarkText" type="text" value="BALLSIMULATOR.COM" placeholder="@Watermark" class="bg-[#0b0d14] border border-slate-700 rounded px-2 py-1 text-xs font-bold text-white" />
+          <input id="inpWatermarkSub" type="text" value="" placeholder="Subtitle" class="bg-[#0b0d14] border border-slate-700 rounded px-2 py-1 text-xs text-slate-300" />
+        </div>
+      </div>
+
+      <!-- 6. PRESET SAVE / LOAD MANAGER -->
+      <div class="bg-[#141722] border border-slate-800 rounded-xl p-3.5 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-[#d4ff33]">💾 Save / Load Presets</span>
+          <span id="presetStatusBadge" class="text-[10px] mono text-slate-400">Ready</span>
+        </div>
+        <div class="flex gap-1.5">
+          <input id="inpPresetName" type="text" placeholder="Nama preset..." class="flex-1 bg-[#0b0d14] border border-slate-700 rounded px-2.5 py-1 text-xs text-white" />
+          <button id="btnSavePreset" class="px-3 py-1 rounded bg-emerald-500 text-slate-950 font-extrabold text-xs">+ Save</button>
+        </div>
+        <div class="flex gap-1.5">
+          <select id="selSavedPresets" class="flex-1 bg-[#0b0d14] border border-slate-700 rounded px-2 py-1 text-xs text-white"></select>
+          <button id="btnLoadPreset" class="px-2.5 py-1 rounded bg-indigo-600 text-white font-bold text-xs">Load</button>
+          <button id="btnDeletePreset" class="px-2 py-1 rounded bg-rose-600/30 text-rose-300 text-xs">🗑</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- CENTER PANEL: 9:16 VERTICAL SIMULATION CANVAS -->
+    <section class="lg:col-span-4 xl:col-span-6 flex flex-col items-center justify-start bg-[#0c0e14] border border-slate-800/80 rounded-2xl p-4 relative order-1 lg:order-2">
+      
+      <!-- Top Bar Above Canvas -->
+      <div class="w-full max-w-[440px] flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800/80">
+        <div>
+          <h2 id="canvasModeTitle" class="font-extrabold text-sm text-white">Spiked Spiral Center</h2>
+          <p id="canvasModeSubtitle" class="text-[11px] text-slate-400">Rainbow spiked spiral labyrinth with glass shard shattering!</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 bg-[#141722] border border-slate-800 px-2.5 py-1 rounded-lg">
+            <span class="text-xs">🔊</span>
+            <input id="rngMasterVol" type="range" min="0" max="1" step="0.05" value="0.45" class="w-16" />
+          </div>
+          <button id="btnPlayPause" class="px-3 py-1.5 rounded-lg bg-[#181b26] hover:bg-slate-800 border border-slate-700 text-xs font-bold flex items-center gap-1 transition">
+            <span id="playPauseIcon">⏸</span> <span id="playPauseText">Pause</span>
+          </button>
+          <button id="btnRestart" class="px-3 py-1.5 rounded-lg bg-[#181b26] hover:bg-slate-800 border border-slate-700 text-xs font-bold flex items-center gap-1 transition">
+            ↺ Restart
+          </button>
+        </div>
+      </div>
+
+      <!-- Canvas Container (9:16 Aspect Ratio) -->
+      <div class="relative w-full max-w-[440px] aspect-[9/16] rounded-2xl overflow-hidden border border-slate-800/90 canvas-shadow bg-black">
+        <canvas id="simCanvas" width="540" height="960" class="w-full h-full block"></canvas>
+
+        <!-- Floating Status Banner -->
+        <div id="escapeBanner" class="hidden absolute top-24 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[#d4ff33] text-slate-950 font-extrabold text-xs tracking-wider uppercase shadow-2xl animate-bounce whitespace-nowrap">
+          🏆 <span id="escapeBannerText">CENTER REACHED!</span>
+        </div>
+      </div>
+
+      <!-- Footer Stats Below Canvas -->
+      <div class="w-full max-w-[440px] mt-2.5 flex items-center justify-between text-xs mono text-slate-400 px-1">
+        <div class="flex items-center gap-4">
+          <span><span id="lblStatLost">Balls lost</span> <b id="statBallsLost" class="text-white ml-1">0</b></span>
+          <span><span id="lblStatEscaped">Progress</span> <b id="statEscapedCount" class="text-[#d4ff33] ml-1">0</b></span>
+          <span>Alive <b id="statBalls" class="text-cyan-400 ml-1">1</b></span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span>Time <b id="statTime" class="text-emerald-400 ml-1">0.0s</b></span>
+          <span>Hits <b id="statBounces" class="text-amber-400 ml-1">0</b></span>
+        </div>
+      </div>
+
+      <!-- Auto-Search & Seed Bar -->
+      <div class="w-full max-w-[440px] mt-2.5 pt-2.5 border-t border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-400">Seed:</span>
+          <input id="inpSeed" type="number" value="1042" class="w-20 bg-[#141722] border border-slate-700 rounded px-2 py-1 text-center mono font-bold text-[#d4ff33]" />
+          <button id="btnApplySeed" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 font-semibold">Apply</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-400">Target:</span>
+          <input id="inpTargetSec" type="number" min="5" max="90" value="22" class="w-14 bg-[#141722] border border-slate-700 rounded px-1.5 py-1 text-center mono font-bold text-emerald-400" />
+          <span class="text-slate-500">s</span>
+          <button id="btnAutoSearch" class="px-2.5 py-1 rounded bg-[#d4ff33]/20 border border-[#d4ff33]/40 text-[#d4ff33] hover:bg-[#d4ff33]/30 font-extrabold">
+            🔍 Auto-Find Seed
+          </button>
+        </div>
+      </div>
+      <div id="searchStatus" class="text-[11px] mono text-[#d4ff33] mt-1 hidden"></div>
+    </section>
+
+    <!-- RIGHT PANEL: DYNAMIC MODE-BASED SETTINGS PANEL -->
+    <section class="lg:col-span-4 xl:col-span-3 flex flex-col gap-4 bg-[#10121a] border border-slate-800/90 rounded-2xl p-4 h-fit lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto order-3">
+      
+      <!-- Active Mode Settings Header -->
+      <div class="bg-[#161926] border border-[#d4ff33]/30 rounded-xl p-3 flex items-center justify-between">
+        <div>
+          <div class="text-[10px] font-extrabold uppercase tracking-wider text-[#d4ff33]">⚙️ ACTIVE MODE SETTINGS</div>
+          <div id="rightPanelModeName" class="text-xs font-extrabold text-white mt-0.5">Spiked Spiral Center</div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btnRandomizeSettings" class="py-1.5 px-3 rounded-lg bg-[#d4ff33] hover:bg-[#dffb60] text-slate-950 font-extrabold text-[11px] shadow-md shadow-[#d4ff33]/20 transition">
+            🎲 Randomize
+          </button>
+          <button id="btnResetSettings" title="Reset to Mode Default" class="w-8 h-8 rounded-lg bg-[#10121a] hover:bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center font-bold text-xs transition">
+            ↺
+          </button>
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION A: MODE-SPECIFIC EXCLUSIVE PARAMETERS -->
+      <div id="sectionModeSpecific" class="bg-[#141722] border border-slate-800 rounded-xl p-3.5 space-y-3">
+        <div class="flex items-center justify-between">
+          <span id="lblModeSpecificHeader" class="text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">💎 SPIKED SPIRAL LABYRINTH</span>
+          <span class="text-[9px] mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Mode Exclusive</span>
+        </div>
+
+        <!-- NEW 1: Spiked Spiral Center (Video Ref 1) -->
+        <div id="ctrlGroupSpikedSpiral" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Spiral Coil Turns</span>
+              <span id="valSpikedSpiralTurns" class="mono text-[#d4ff33] font-bold">5.5 turns</span>
+            </div>
+            <input id="rngSpikedSpiralTurns" type="range" min="3.5" max="7.5" step="0.5" value="5.5" class="w-full" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Stream Spawn Interval</span>
+              <span id="valStreamSpawnRate" class="mono text-[#d4ff33] font-bold">16f</span>
+            </div>
+            <input id="rngStreamSpawnRate" type="range" min="8" max="45" step="2" value="16" class="w-full" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Glass Shards on Death</span>
+              <span id="valGlassShardCount" class="mono text-[#d4ff33] font-bold">10 shards</span>
+            </div>
+            <input id="rngGlassShardCount" type="range" min="4" max="24" step="2" value="10" class="w-full" />
+          </div>
+        </div>
+
+        <!-- NEW 2: Multiply Gates Center (Polished Screenshot 1-5 Edition) -->
+        <div id="ctrlGroupMultiplyGates" class="space-y-2.5 hidden">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Jenis Kaca / Glass Obstacle Style</label>
+            <select id="selGlassStyle" class="w-full bg-[#181b26] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white">
+              <option value="hexagons">⬢ Hexagon Honeycomb (Screenshot 1–4)</option>
+              <option value="hourglass">⏳ Hourglass Checkerboard (Screenshot 5)</option>
+              <option value="triangles">📐 Triangulated Polygon Mesh (Video Ref)</option>
+              <option value="diamonds">💠 Diamond Crystal Grid</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Layout Multiplier</label>
+              <select id="selGateLayout" class="w-full bg-[#181b26] border border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white">
+                <option value="scattered">✨ Scattered (SS 1–4)</option>
+                <option value="right_line">➡️ Right Line (SS 5)</option>
+                <option value="bottom_stack">⬇️ Bottom Stack</option>
+                <option value="random">🎲 Random Positions</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Gaya Portal Tengah</label>
+              <select id="selCenterPortalStyle" class="w-full bg-[#181b26] border border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white">
+                <option value="blackhole">🌌 Black Hole Vortex</option>
+                <option value="energy">⚡ Energy Core (SS 5)</option>
+                <option value="diamond">💎 Faceted Diamond</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Jumlah Multiplier Orbs</span>
+              <span id="valGateCount" class="mono text-[#d4ff33] font-bold">4 orbs</span>
+            </div>
+            <input id="rngGateCount" type="range" min="1" max="6" step="1" value="4" class="w-full" />
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Gate Multiplier Growth</span>
+              <span id="valGateIncrement" class="mono text-[#d4ff33] font-bold">+1 / hit</span>
+            </div>
+            <input id="rngGateIncrement" type="range" min="0" max="6" step="1" value="1" class="w-full" />
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Glass Obstacle Density</span>
+              <span id="valMeshDensity" class="mono text-[#d4ff33] font-bold">8 layers</span>
+            </div>
+            <input id="rngMeshDensity" type="range" min="4" max="12" step="1" value="8" class="w-full" />
+          </div>
+
+          <div class="flex items-center justify-between pt-1">
+            <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+              <input id="chkMultiplyRainbowWalls" type="checkbox" class="accent-[#d4ff33] w-4 h-4" />
+              <span>Rainbow Spiral Walls (SS 5)</span>
+            </label>
+            <button id="btnRandomizeGates" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/30 font-bold text-[11px]">
+              🎲 Acak Gate
+            </button>
+          </div>
+        </div>
+
+        <!-- NEW 3: Beaded Spiral Progress (Video Ref 3) -->
+        <div id="ctrlGroupBeadedSpiral" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Spiral Coil Turns</span>
+              <span id="valBeadSpiralTurns" class="mono text-[#d4ff33] font-bold">4.5 turns</span>
+            </div>
+            <input id="rngBeadSpiralTurns" type="range" min="3.0" max="6.5" step="0.5" value="4.5" class="w-full" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Inner Bead Sub-Rows</span>
+              <span id="valBeadSubRows" class="mono text-[#d4ff33] font-bold">3 rows</span>
+            </div>
+            <input id="rngBeadSubRows" type="range" min="1" max="4" step="1" value="3" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 4. Merge Mode Exclusive Controls -->
+        <div id="ctrlGroupMerge" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Neck Drop Interval (Spawn Speed)</span>
+              <span id="valSpawnInterval" class="mono text-[#d4ff33] font-bold">34f</span>
+            </div>
+            <input id="rngSpawnInterval" type="range" min="16" max="75" step="1" value="34" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 5. Classic 24 Rings Exclusive Controls -->
+        <div id="ctrlGroupClassic" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Concentric Ring Count</span>
+              <span id="valClassicRings" class="mono text-[#d4ff33] font-bold">24 rings</span>
+            </div>
+            <input id="rngClassicRings" type="range" min="6" max="36" step="1" value="24" class="w-full" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Spiral Phase Shift</span>
+              <span id="valClassicPhase" class="mono text-[#d4ff33] font-bold">0.14 rad</span>
+            </div>
+            <input id="rngClassicPhase" type="range" min="0.0" max="0.45" step="0.02" value="0.14" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 6. Destruction Beaded Dots Exclusive Controls -->
+        <div id="ctrlGroupDestruction" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Bead Ring Layers</span>
+              <span id="valBeadRings" class="mono text-[#d4ff33] font-bold">10 layers</span>
+            </div>
+            <input id="rngBeadRings" type="range" min="4" max="16" step="1" value="10" class="w-full" />
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Bead Dot Radius</span>
+              <span id="valBeadSize" class="mono text-[#d4ff33] font-bold">3.2px</span>
+            </div>
+            <input id="rngBeadSize" type="range" min="2.0" max="6.0" step="0.2" value="3.2" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 7. Infinite / Duplicate Balls Exclusive Controls -->
+        <div id="ctrlGroupInfinite" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Multiply Factor on Escape</span>
+              <span id="valMultiplyFactor" class="mono text-[#d4ff33] font-bold">2x Balls</span>
+            </div>
+            <input id="rngMultiplyFactor" type="range" min="2" max="4" step="1" value="2" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 8. Web Expansion & Trail Expansion Growth Controls -->
+        <div id="ctrlGroupGrowth" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Ball Growth Per Bounce</span>
+              <span id="valGrowthRate" class="mono text-[#d4ff33] font-bold">+0.45px</span>
+            </div>
+            <input id="rngGrowthRate" type="range" min="0.10" max="1.50" step="0.05" value="0.45" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 9. Fragment Expansion Controls -->
+        <div id="ctrlGroupFragment" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Max Shatter Fragments</span>
+              <span id="valFragmentCount" class="mono text-[#d4ff33] font-bold">32 dots</span>
+            </div>
+            <input id="rngFragmentCount" type="range" min="10" max="60" step="2" value="32" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 10. Spiral Vortex Controls -->
+        <div id="ctrlGroupSpiral" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Spiral Coil Turns</span>
+              <span id="valSpiralTurns" class="mono text-[#d4ff33] font-bold">4.2 turns</span>
+            </div>
+            <input id="rngSpiralTurns" type="range" min="2.5" max="6.5" step="0.2" value="4.2" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 11. Collision Burst Controls -->
+        <div id="ctrlGroupCollision" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Burst Swarm Spawn Count</span>
+              <span id="valCollisionBurst" class="mono text-[#d4ff33] font-bold">+24 balls</span>
+            </div>
+            <input id="rngCollisionBurst" type="range" min="8" max="50" step="2" value="24" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 12. Eating Balls Controls -->
+        <div id="ctrlGroupEating" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Initial Balls Count</span>
+              <span id="valEatingCount" class="mono text-[#d4ff33] font-bold">22 balls</span>
+            </div>
+            <input id="rngEatingCount" type="range" min="8" max="45" step="1" value="22" class="w-full" />
+          </div>
+        </div>
+
+        <!-- 13. Country Royale / Web Battle Controls -->
+        <div id="ctrlGroupRoyale" class="space-y-2.5 hidden">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-200 font-medium">Clash / Spike Damage Multiplier</span>
+              <span id="valRoyaleDmg" class="mono text-[#d4ff33] font-bold">1.0x</span>
+            </div>
+            <input id="rngRoyaleDmg" type="range" min="0.4" max="2.5" step="0.1" value="1.0" class="w-full" />
+          </div>
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION B: TRAP / SPIKES -->
+      <div id="sectionTrap" class="space-y-3 border-t border-slate-800/80 pt-3.5 hidden">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-bold uppercase tracking-widest text-rose-400">🦔 TRAP & SPIKES</span>
+          <span id="trapModeHint" class="text-[10px] mono text-[#d4ff33]">Ring / Spiral Spikes</span>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-200 font-medium">Spike height</span>
+            <span id="valSpikeHeight" class="mono text-[#d4ff33] font-bold">28px</span>
+          </div>
+          <input id="rngSpikeHeight" type="range" min="0" max="130" step="2" value="28" class="w-full" />
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-200 font-medium">Spike width</span>
+            <span id="valSpikeWidth" class="mono text-[#d4ff33] font-bold">48px</span>
+          </div>
+          <input id="rngSpikeWidth" type="range" min="20" max="160" step="2" value="48" class="w-full" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Spike Coverage</label>
+            <select id="selSpikeCoverage" class="w-full bg-[#181b26] border border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white">
+              <option value="full">360° Full Ring</option>
+              <option value="right_arc">Right Rainbow Arc (Ref 2)</option>
+              <option value="bottom">Bottom Arc Trap</option>
+              <option value="clusters">3 Deadly Clusters</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Spike Render Style</label>
+            <select id="selSpikeStyle" class="w-full bg-[#181b26] border border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white">
+              <option value="rainbow">Rainbow Filled (Ref 1 & 2)</option>
+              <option value="hollow">Hollow Neon (BouncyLab)</option>
+              <option value="gradient">Filled Gradient</option>
+              <option value="crimson">Crimson Danger</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION C: ARENA / CIRCLE GEOMETRY -->
+      <div class="space-y-3 border-t border-slate-800/80 pt-3.5">
+        <div id="hdrCircleSection" class="text-[11px] font-bold uppercase tracking-widest text-slate-400">ARENA & SPIRAL GEOMETRY</div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span id="lblCircleRadius" class="text-slate-200 font-medium">Outer radius</span>
+            <span id="valCircleRadius" class="mono text-[#d4ff33] font-bold">460px</span>
+          </div>
+          <input id="rngCircleRadius" type="range" min="260" max="510" step="5" value="460" class="w-full" />
+        </div>
+
+        <div id="rowOutlineThickness">
+          <div class="flex justify-between text-xs mb-1.5">
+            <span id="lblOutlineThickness" class="text-slate-200 font-medium">Wall thickness</span>
+            <span id="valOutlineThickness" class="mono text-[#d4ff33] font-bold">10px</span>
+          </div>
+          <input id="rngOutlineThickness" type="range" min="3" max="36" step="1" value="10" class="w-full" />
+        </div>
+
+        <div id="rowOpeningSize">
+          <div class="flex justify-between text-xs mb-1.5">
+            <span id="lblOpeningSize" class="text-slate-200 font-medium">Opening size</span>
+            <span id="valOpeningSize" class="mono text-[#d4ff33] font-bold">24°</span>
+          </div>
+          <input id="rngOpeningSize" type="range" min="0" max="90" step="1" value="24" class="w-full" />
+        </div>
+
+        <div id="rowRotSpeed">
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-200 font-medium">Rotation speed</span>
+            <span id="valRotSpeed" class="mono text-[#d4ff33] font-bold">0.65x</span>
+          </div>
+          <input id="rngRotSpeed" type="range" min="0.0" max="2.2" step="0.05" value="0.65" class="w-full" />
+        </div>
+      </div>
+
+      <!-- DYNAMIC SECTION D: BALL PHYSICS -->
+      <div class="space-y-3 border-t border-slate-800/80 pt-3.5">
+        <div id="hdrBallSection" class="text-[11px] font-bold uppercase tracking-widest text-slate-400">BALL & BOUNCE PHYSICS</div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span id="lblBallRadius" class="text-slate-200 font-medium">Ball radius</span>
+            <span id="valBallRadius" class="mono text-[#d4ff33] font-bold">28px</span>
+          </div>
+          <input id="rngBallRadius" type="range" min="12" max="140" step="1" value="28" class="w-full" />
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-200 font-medium">Gravity</span>
+            <span id="valGravity" class="mono text-[#d4ff33] font-bold">0.68</span>
+          </div>
+          <input id="rngGravity" type="range" min="0.10" max="1.60" step="0.01" value="0.68" class="w-full" />
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span id="lblMinBounce" class="text-slate-200 font-medium">Min. bounce speed</span>
+            <span id="valMinBounce" class="mono text-[#d4ff33] font-bold">4.2</span>
+          </div>
+          <input id="rngMinBounce" type="range" min="0.2" max="10.0" step="0.05" value="4.2" class="w-full" />
+          <p id="hintMinBounce" class="text-[10px] text-slate-500 mt-1 leading-snug">
+            Kecepatan pantul minimum saat bola menabrak dinding cincin/spiral.
+          </p>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span id="lblInitSpeedX" class="text-slate-200 font-medium">Initial horizontal speed</span>
+            <span id="valInitSpeedX" class="mono text-[#d4ff33] font-bold">4.2</span>
+          </div>
+          <input id="rngInitSpeedX" type="range" min="0.2" max="10.0" step="0.1" value="4.2" class="w-full" />
+        </div>
+      </div>
+
+      <!-- SECTION E: COLORS -->
+      <div class="space-y-3 border-t border-slate-800/80 pt-3.5">
+        <div class="text-[11px] font-bold uppercase tracking-widest text-slate-400">COLORS</div>
+
+        <div>
+          <label class="text-[10px] text-slate-400 block mb-1">Preset Arena Color Palette</label>
+          <select id="selColorTheme" class="w-full bg-[#181b26] border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-white">
+            <option value="ballsim">🌈 BallSimulator Neon Rainbow (Black BG)</option>
+            <option value="bouncylab">🟢 BouncyLab Mint & Forest</option>
+            <option value="reference">🍋 Reference Lime & Pink</option>
+            <option value="cyberpunk">⚡ Cyberpunk Cyan & Magenta</option>
+            <option value="gold">👑 Gold Luxury & Obsidian</option>
+          </select>
+        </div>
+
+        <label class="flex items-center justify-between cursor-pointer pt-1">
+          <span class="text-xs text-slate-200 font-medium">Random colors each round</span>
+          <input id="chkRandomColors" type="checkbox" class="accent-[#d4ff33] w-4 h-4 rounded" />
+        </label>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-200 font-medium">Gradient — start</div>
+            <div class="text-[10px] text-slate-500">Only used when random colors are disabled.</div>
+          </div>
+          <input id="colGradStart" type="color" value="#a855f7" />
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-200 font-medium">Gradient — end</div>
+            <div class="text-[10px] text-slate-500">Only used when random colors are disabled.</div>
+          </div>
+          <input id="colGradEnd" type="color" value="#22d3ee" />
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-200 font-medium">Background</div>
+            <div class="text-[10px] text-slate-500">Only used when random colors are disabled.</div>
+          </div>
+          <input id="colBackground" type="color" value="#000000" />
+        </div>
+      </div>
+
+      <!-- SECTION F: SOUND -->
+      <div class="space-y-3 border-t border-slate-800/80 pt-3.5">
+        <div class="text-[11px] font-bold uppercase tracking-widest text-slate-400">SOUND</div>
+
+        <label class="flex items-center justify-between cursor-pointer">
+          <span class="text-xs text-slate-200 font-medium">Sound</span>
+          <input id="chkSoundEnabled" type="checkbox" checked class="accent-[#d4ff33] w-4 h-4 rounded" />
+        </label>
+
+        <div>
+          <label class="text-xs text-slate-200 font-medium block mb-1">Bounce melody</label>
+          <select id="selMelody" class="w-full bg-[#181b26] border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white">
+            <option value="arpeggio">Arpeggio</option>
+            <option value="rushe">Rush E (Viral Meme)</option>
+            <option value="furelise">Beethoven - Für Elise</option>
+            <option value="megalovania">Megalovania (Undertale)</option>
+            <option value="interstellar">Interstellar - Cornfield Chase</option>
+            <option value="giorno">Giorno's Theme (JoJo)</option>
+            <option value="faded">Alan Walker - Faded</option>
+            <option value="coffindance">Astronomia (Coffin Dance)</option>
+            <option value="tokyodrift">Teriyaki Boyz - Tokyo Drift</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-200 font-medium block mb-1">Bounce voice</label>
+          <select id="selInstrument" class="w-full bg-[#181b26] border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white">
+            <option value="glassbell">Glass Bell</option>
+            <option value="piano">Classic Grand Piano</option>
+            <option value="musicbox">Toy Music Box (Celesta)</option>
+            <option value="marimba">Wooden Marimba / Xylophone</option>
+            <option value="synth8bit">Retro 8-Bit Chiptune</option>
+            <option value="pluck">Acoustic Pluck Guitar</option>
+            <option value="fm">FM Electric Bell</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-200 font-medium block mb-1">Death sound</label>
+          <select id="selDeathSound" class="w-full bg-[#181b26] border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white">
+            <option value="shatter">Glass Shatter (Ref 1 & 2)</option>
+            <option value="thud">Thud</option>
+            <option value="crunch">8-Bit Crunch</option>
+            <option value="explosion">Deep Boom</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-200 font-medium block mb-1">Escape / Win sound</label>
+          <select id="selEscapeSound" class="w-full bg-[#181b26] border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white">
+            <option value="chime">Chime</option>
+            <option value="fanfare">Victory Fanfare</option>
+            <option value="levelup">8-Bit Level Up</option>
+            <option value="bell">Zen Bell Ring</option>
+          </select>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- MODULAR SCRIPTS (WORKS DIRECTLY WITHOUT A WEB SERVER) -->
+  <script src="config.js"></script>
+  <script src="audio.js"></script>
+  <script src="engine.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
