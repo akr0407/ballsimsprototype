@@ -8,6 +8,38 @@
  * - Seluruh Event Listener UI & Kontrol Dinamis
  *************************************************************************/
 
+// Mode rendering is registered separately from physics so each mode can own
+// its arena and optional overlay without adding branches to the main loop.
+const recordingCanvas = document.createElement('canvas');
+recordingCanvas.width = 1080;
+recordingCanvas.height = 1920;
+const recordingCtx = recordingCanvas.getContext('2d');
+let playbackSpeed = 1;
+let mediaRecorder = null;
+let recordingChunks = [];
+let recordingTimer = null;
+let speedBeforeRecording = 1;
+let pauseBeforeRecording = false;
+
+const MODE_ARENA_RENDERERS = {
+    spiked_spiral: (state, config, maxOuterR, lineThick, spikeH) =>
+        drawSpikedSpiralArena(ctx, state, config, maxOuterR, lineThick, spikeH),
+    multiply_gates: (state, config, maxOuterR, lineThick, spikeH) =>
+        drawMultiplyGatesArena(ctx, state, config, maxOuterR, lineThick, spikeH),
+    beaded_spiral: (state, config, maxOuterR, lineThick) =>
+        drawBeadedSpiralArena(ctx, state, config, maxOuterR, lineThick)
+};
+
+MODE_ARENA_RENDERERS.target=MODE_ARENA_RENDERERS.multiply_gates;
+MODE_ARENA_RENDERERS.portal=MODE_ARENA_RENDERERS.multiply_gates;
+
+const MODE_ARENA_OVERLAYS = {
+    destruction: drawDestructionBeads,
+    spiral: drawSpiralVortex
+};
+
+MODE_ARENA_OVERLAYS.shatter = MODE_ARENA_OVERLAYS.destruction;
+
 function renderSimulation(state, config) {
     ctx.save();
 
@@ -20,7 +52,11 @@ function renderSimulation(state, config) {
     }
 
     // 2. Trail Expansion Layer
-    if (config.mode === 'trail_expansion') {
+    if (config.mode === 'trail_expansion' || config.mode === 'paint' || config.colorTrails) {
+        if (config.colorTrails && config.mode !== 'trail_expansion' && config.mode !== 'paint') {
+            trailCtx.fillStyle = 'rgba(0, 0, 0, 0.035)';
+            trailCtx.fillRect(0, 0, trailCanvas.width, trailCanvas.height);
+        }
         ctx.drawImage(trailCanvas, 0, 0);
     }
 
@@ -30,7 +66,7 @@ function renderSimulation(state, config) {
         ctx.translate(CX, CY);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '800 22px "Plus Jakarta Sans"';
+        ctx.font = `800 ${config.hookFontSize || 22}px "Plus Jakarta Sans"`;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
         ctx.fillText(config.watermarkText, 0, 0);
         if (config.watermarkSub && config.watermarkSub.trim() !== '') {
@@ -57,6 +93,15 @@ function renderSimulation(state, config) {
 
     // 5. Audio-Reactive Spectrum Ring Halo
     const freqData = sound.getSpectrumData();
+    if (config.reactiveBackground) {
+        const energy = (freqData[2] + freqData[5] + freqData[8]) / (3 * 255);
+        const alpha = 0.025 + energy * 0.15;
+        const glow = ctx.createRadialGradient(CX, CY, 30, CX, CY, canvas.height * 0.72);
+        glow.addColorStop(0, `rgba(0, 0, 0, 0)`);
+        glow.addColorStop(1, `${state.gradStart}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`);
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     if (config.audioSpectrum && state.rings.length > 0) {
         const outerR = state.rings[state.rings.length - 1].radius;
         ctx.save();
@@ -85,100 +130,18 @@ function renderSimulation(state, config) {
     // =====================================================================
     // MODE-SPECIFIC ARENA RENDERERS
     // =====================================================================
-    if (config.mode === 'spiked_spiral') {
-        drawSpikedSpiralArena(ctx, state, config, maxOuterR, lineThick, spikeH);
-    } else if (config.mode === 'multiply_gates') {
-        drawMultiplyGatesArena(ctx, state, config, maxOuterR, lineThick, spikeH);
-    } else if (config.mode === 'beaded_spiral') {
-        drawBeadedSpiralArena(ctx, state, config, maxOuterR, lineThick);
-    } else {
-        // Standard Concentric Rings & Flask
-        for (let i = 0; i < state.rings.length; i++) {
-            const r = state.rings[i];
-            ctx.save();
-
-            if (config.mode === 'classic') {
-                ctx.strokeStyle = `hsl(${r.hue}, 90%, 58%)`;
-                ctx.lineWidth = 2.4;
-            } else {
-                const ringGrad = ctx.createLinearGradient(CX - r.radius, CY - r.radius, CX + r.radius, CY + r.radius);
-                ringGrad.addColorStop(0, state.gradStart);
-                ringGrad.addColorStop(1, state.gradEnd);
-                ctx.strokeStyle = ringGrad;
-                ctx.lineWidth = lineThick;
-            }
-
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.arc(CX, CY, r.radius, r.angle + r.gap, r.angle + Math.PI * 2);
-            ctx.stroke();
-
-            if (r.isFlask) {
-                const halfGap = r.gap / 2;
-                const neckHalfW = r.radius * Math.sin(halfGap);
-                const neckBotY = CY - r.radius * Math.cos(halfGap);
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = lineThick;
-                ctx.beginPath();
-                ctx.moveTo(CX - neckHalfW, 18);
-                ctx.lineTo(CX - neckHalfW, neckBotY);
-                ctx.moveTo(CX + neckHalfW, 18);
-                ctx.lineTo(CX + neckHalfW, neckBotY);
-                ctx.stroke();
-            }
-
-            if (r.hasSpikes && spikeH > 0) {
-                drawRingSpikes1to1(ctx, r, state, config, spikeH, lineThick);
-            }
-            ctx.restore();
-        }
+    ctx.save();
+    if (config.wallGlowFX) {
+        ctx.shadowColor = state.gradEnd || '#d4ff33';
+        ctx.shadowBlur = Math.max(8, lineThick * 2.2);
     }
+    const arenaRenderer = MODE_ARENA_RENDERERS[config.mode];
+    if (arenaRenderer) arenaRenderer(state, config, maxOuterR, lineThick, spikeH);
+    else drawStandardRingArena(state, config, spikeH, lineThick);
 
-    // Destruction Beaded Dot Matrix Rings
-    if (config.mode === 'destruction') {
-        for (const bead of state.beads) {
-            if (!bead.alive) continue;
-            const bx = CX + Math.cos(bead.angle) * bead.radius;
-            const by = CY + Math.sin(bead.angle) * bead.radius;
-            ctx.fillStyle = `hsl(${bead.hue}, 92%, 62%)`;
-            ctx.beginPath();
-            ctx.arc(bx, by, bead.size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-
-    // Outward Spiral Vortex
-    if (config.mode === 'spiral') {
-        ctx.save();
-        const maxTheta = (config.spiralTurns || 4.2) * Math.PI * 2;
-        ctx.strokeStyle = '#c084fc';
-        ctx.lineWidth = 5.5;
-        ctx.beginPath();
-        for (let t = 0; t <= maxTheta; t += 0.07) {
-            const rad = 34 + ((maxOuterR - 34) / maxTheta) * t;
-            const ang = t + state.spiralAngle;
-            const px = CX + Math.cos(ang) * rad;
-            const py = CY + Math.sin(ang) * rad;
-            if (t === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-        ctx.restore();
-
-        for (const obs of state.spiralObstacles) {
-            if (!obs.alive) continue;
-            const ang = obs.theta + state.spiralAngle;
-            const ox = CX + Math.cos(ang) * obs.r;
-            const oy = CY + Math.sin(ang) * obs.r;
-            ctx.fillStyle = `hsl(${obs.hue}, 90%, 65%)`;
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.arc(ox, oy, obs.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        }
-    }
+    const drawModeOverlay = MODE_ARENA_OVERLAYS[config.mode];
+    if (drawModeOverlay) drawModeOverlay(state, config, maxOuterR);
+    ctx.restore();
 
     // Pinned Grey Shield Balls
     for (const pb of state.pinnedBalls) {
@@ -199,7 +162,7 @@ function renderSimulation(state, config) {
     }
 
     // Polygonal Glass Shards
-    for (const gs of state.glassShards) {
+    for (const gs of (config.shatterFX !== false ? state.glassShards : [])) {
         ctx.save();
         ctx.translate(gs.x, gs.y);
         ctx.rotate(gs.rot);
@@ -219,7 +182,7 @@ function renderSimulation(state, config) {
     }
 
     // Shockwaves
-    for (const sw of state.shockwaves) {
+    for (const sw of (config.shockwaveFX !== false ? state.shockwaves : [])) {
         ctx.save();
         ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0, sw.alpha)})`;
         ctx.lineWidth = 2.5;
@@ -230,7 +193,7 @@ function renderSimulation(state, config) {
     }
 
     // Particles & Floating Texts
-    for (const p of state.particles) {
+    for (const p of (config.confettiFX !== false ? state.particles : [])) {
         ctx.save();
         ctx.globalAlpha = Math.max(0, p.life);
         ctx.fillStyle = p.color;
@@ -264,13 +227,95 @@ function renderSimulation(state, config) {
     if (config.bottomHookText && config.bottomHookText.trim() !== '') {
         ctx.save();
         ctx.textAlign = 'center';
-        ctx.font = '700 15px "Plus Jakarta Sans"';
+        ctx.font = `700 ${config.bottomHookFontSize || 15}px "Plus Jakarta Sans"`;
         ctx.fillStyle = '#ffffff';
         ctx.fillText(config.bottomHookText, CX, canvas.height - 185);
         ctx.restore();
     }
 
     ctx.restore();
+}
+
+function drawStandardRingArena(state, config, spikeH, lineThick) {
+    for (const ring of state.rings) {
+        ctx.save();
+        if (config.mode === 'classic') {
+            ctx.strokeStyle = `hsl(${ring.hue}, 90%, 58%)`;
+            ctx.lineWidth = 2.4;
+        } else {
+            const ringGrad = ctx.createLinearGradient(CX - ring.radius, CY - ring.radius, CX + ring.radius, CY + ring.radius);
+            ringGrad.addColorStop(0, state.gradStart);
+            ringGrad.addColorStop(1, state.gradEnd);
+            ctx.strokeStyle = ringGrad;
+            ctx.lineWidth = lineThick;
+        }
+
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(CX, CY, ring.radius, ring.angle + ring.gap, ring.angle + Math.PI * 2);
+        ctx.stroke();
+
+        if (ring.isFlask) {
+            const halfGap = ring.gap / 2;
+            const neckHalfW = ring.radius * Math.sin(halfGap);
+            const neckBotY = CY - ring.radius * Math.cos(halfGap);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = lineThick;
+            ctx.beginPath();
+            ctx.moveTo(CX - neckHalfW, 18);
+            ctx.lineTo(CX - neckHalfW, neckBotY);
+            ctx.moveTo(CX + neckHalfW, 18);
+            ctx.lineTo(CX + neckHalfW, neckBotY);
+            ctx.stroke();
+        }
+
+        if (ring.hasSpikes && spikeH > 0) drawRingSpikes1to1(ctx, ring, state, config, spikeH, lineThick);
+        ctx.restore();
+    }
+}
+
+function drawDestructionBeads(state) {
+    for (const bead of state.beads) {
+        if (!bead.alive) continue;
+        const bx = CX + Math.cos(bead.angle) * bead.radius;
+        const by = CY + Math.sin(bead.angle) * bead.radius;
+        ctx.fillStyle = `hsl(${bead.hue}, 92%, 62%)`;
+        ctx.beginPath();
+        ctx.arc(bx, by, bead.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawSpiralVortex(state, config, maxOuterR) {
+    ctx.save();
+    const maxTheta = (config.spiralTurns || 4.2) * Math.PI * 2;
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth = 5.5;
+    ctx.beginPath();
+    for (let t = 0; t <= maxTheta; t += 0.07) {
+        const rad = 34 + ((maxOuterR - 34) / maxTheta) * t;
+        const ang = t + state.spiralAngle;
+        const px = CX + Math.cos(ang) * rad;
+        const py = CY + Math.sin(ang) * rad;
+        if (t === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    for (const obs of state.spiralObstacles) {
+        if (!obs.alive) continue;
+        const ang = obs.theta + state.spiralAngle;
+        const ox = CX + Math.cos(ang) * obs.r;
+        const oy = CY + Math.sin(ang) * obs.r;
+        ctx.fillStyle = `hsl(${obs.hue}, 90%, 65%)`;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(ox, oy, obs.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    }
 }
 
 /*************************************************************************
@@ -742,6 +787,14 @@ function drawRingSpikes1to1(targetCtx, ring, state, config, spikeH, lineThick) {
 function drawSingleBallVisual(targetCtx, b, state, config, isTrailStamp = false) {
     targetCtx.save();
     targetCtx.translate(b.x, b.y);
+    if (isTrailStamp) {
+        const trailScale = Math.max(0.25, Math.min(2, Number(config.trailThickness) || 0.8));
+        targetCtx.scale(trailScale, trailScale);
+    }
+    if (config.glowFX && !isTrailStamp) {
+        targetCtx.shadowColor = `hsl(${b.hue || 185}, 95%, 65%)`;
+        targetCtx.shadowBlur = Math.max(7, b.r * 0.8);
+    }
     if (b.spawnPopScale && b.spawnPopScale < 1) {
         targetCtx.scale(b.spawnPopScale, b.spawnPopScale);
     }
@@ -945,21 +998,30 @@ function drawCountryFlagBall(targetCtx, b) {
 /*************************************************************************
  * UI CONTROLLERS & DYNAMIC MODE BINDINGS
  *************************************************************************/
-const ALL_SPECIFIC_GROUPS = [
-    'ctrlGroupSpikedSpiral',
-    'ctrlGroupMultiplyGates',
-    'ctrlGroupBeadedSpiral',
-    'ctrlGroupMerge',
-    'ctrlGroupClassic',
-    'ctrlGroupDestruction',
-    'ctrlGroupInfinite',
-    'ctrlGroupGrowth',
-    'ctrlGroupFragment',
-    'ctrlGroupSpiral',
-    'ctrlGroupCollision',
-    'ctrlGroupEating',
-    'ctrlGroupRoyale'
-];
+const ALL_SPECIFIC_GROUPS = [...new Set(GAME_MODES.map(mode => mode.specificGroup).filter(Boolean))];
+const ALL_MODE_CARDS = [...new Set(GAME_MODES.map(mode => mode.leftPanelCard).filter(Boolean))];
+
+// Single source of truth for mode-exclusive controls: config key, display
+// formatting, parsing, and whether a changed value requires a fresh state.
+const MODE_CONTROL_DEFINITIONS = {
+    rngSpikedSpiralTurns: { key: 'spikedSpiralTurns', format: v => `${v} turns`, reset: true },
+    rngStreamSpawnRate: { key: 'streamSpawnRate', format: v => `${v}f` },
+    rngGlassShardCount: { key: 'glassShardCount', format: v => `${v} shards` },
+    rngBeadSpiralTurns: { key: 'beadSpiralTurns', format: v => `${v} turns`, reset: true },
+    rngBeadSubRows: { key: 'beadSubRows', format: v => `${v} rows`, reset: true },
+    rngSpawnInterval: { key: 'spawnIntervalTicks', format: v => `${v}f` },
+    rngClassicRings: { key: 'classicRingCount', format: v => `${v} rings`, reset: true },
+    rngClassicPhase: { key: 'classicPhaseShift', format: v => `${Number(v).toFixed(2)} rad`, reset: true },
+    rngBeadRings: { key: 'beadRingLayers', format: v => `${v} layers`, reset: true },
+    rngBeadSize: { key: 'beadDotSize', format: v => `${Number(v).toFixed(1)}px`, reset: true },
+    rngMultiplyFactor: { key: 'multiplyFactor', format: v => `x${v} per escape` },
+    rngGrowthRate: { key: 'ballGrowthRate', format: v => `+${Number(v).toFixed(2)}px / hit` },
+    rngFragmentCount: { key: 'fragmentMaxCount', format: v => `${v} fragments` },
+    rngSpiralTurns: { key: 'spiralTurns', format: v => `${Number(v).toFixed(1)} turns` },
+    rngCollisionBurst: { key: 'collisionBurstCount', format: v => `+${v} balls` },
+    rngEatingCount: { key: 'eatingInitialCount', format: v => `${v} balls`, reset: true },
+    rngRoyaleDmg: { key: 'royaleDamageMult', format: v => `${Number(v).toFixed(1)}x` }
+};
 
 function buildTopModePills() {
     const container = document.getElementById('topModePills');
@@ -973,10 +1035,96 @@ function buildTopModePills() {
     });
 }
 
-function selectGameMode(modeId) {
+function applyMergeTierTheme(themeId, restoreOverrides = true) {
+    const theme = DEFAULT_MERGE_THEMES[themeId] || DEFAULT_MERGE_THEMES.video1_faces;
+    activeMergeTiers = theme.map(tier => ({ ...tier, customImg: null, customImgUrl: null }));
+    const overrides = restoreOverrides && simConfig.modeSettings?.fusion?.tierOverrides;
+    if (Array.isArray(overrides)) {
+        overrides.forEach((override, index) => {
+            const tier = activeMergeTiers[index];
+            if (!tier || !override) return;
+            if (typeof override.emoji === 'string') tier.emoji = override.emoji;
+            if (typeof override.color === 'string' && /^#[0-9a-f]{6}$/i.test(override.color)) tier.color = override.color;
+        });
+    }
+    renderMergeTierEditor();
+}
+
+function saveMergeTierOverrides() {
+    const modeSettings = simConfig.modeSettings.fusion;
+    modeSettings.tierOverrides = activeMergeTiers.map(({ emoji, color }) => ({ emoji, color }));
+}
+
+function renderMergeTierEditor() {
+    const list = document.getElementById('mergeTierList');
+    if (!list) return;
+    list.replaceChildren();
+    activeMergeTiers.forEach((tier, index) => {
+        const row = document.createElement('div');
+        row.className = 'grid grid-cols-[1fr_auto_auto_auto] items-center gap-1.5 bg-[#0b0d14] rounded p-1.5';
+
+        const name = document.createElement('span');
+        name.className = 'text-[10px] text-slate-300 truncate';
+        name.textContent = `${index + 1}. ${tier.name}`;
+
+        const emoji = document.createElement('input');
+        emoji.type = 'text';
+        emoji.value = tier.emoji || '';
+        emoji.placeholder = 'Emoji';
+        emoji.title = 'Emoji tier';
+        emoji.className = 'w-14 bg-[#181b26] border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-white';
+        emoji.addEventListener('input', () => {
+            tier.emoji = emoji.value;
+            saveMergeTierOverrides();
+        });
+
+        const color = document.createElement('input');
+        color.type = 'color';
+        color.value = tier.color;
+        color.title = 'Warna tier';
+        color.addEventListener('input', () => {
+            tier.color = color.value;
+            saveMergeTierOverrides();
+        });
+
+        const imageLabel = document.createElement('label');
+        imageLabel.className = 'px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-white cursor-pointer';
+        imageLabel.textContent = tier.customImg ? '✓' : '📷';
+        imageLabel.title = 'Unggah gambar tier (berlaku selama sesi ini)';
+        const imageInput = document.createElement('input');
+        imageInput.type = 'file';
+        imageInput.accept = 'image/*';
+        imageInput.className = 'hidden';
+        imageInput.addEventListener('change', event => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = loadEvent => {
+                const image = new Image();
+                image.onload = () => {
+                    tier.customImg = image;
+                    tier.customImgUrl = loadEvent.target.result;
+                    imageLabel.textContent = '✓';
+                };
+                image.src = loadEvent.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+        imageLabel.appendChild(imageInput);
+
+        row.append(name, emoji, color, imageLabel);
+        list.appendChild(row);
+    });
+}
+
+function selectGameMode(modeId, resetModeSettings = false) {
+    const modeChanged = simConfig.mode !== modeId;
+    if (modeChanged) rememberActiveModeSettings();
     simConfig.mode = modeId;
     const modeObj = GAME_MODES.find(m => m.id === modeId);
     if (modeObj) {
+        if (modeChanged || resetModeSettings) activateModeSettings(modeId, resetModeSettings);
+        if (modeId === 'fusion') applyMergeTierTheme(simConfig.mergeTheme, true);
         document.getElementById('canvasModeTitle').textContent = modeObj.name;
         document.getElementById('canvasModeSubtitle').textContent = modeObj.subtitle;
         document.getElementById('rightPanelModeName').textContent = modeObj.name;
@@ -999,28 +1147,10 @@ function selectGameMode(modeId) {
         if (modeObj.hasSpikes) secTrap.classList.remove('hidden');
         else secTrap.classList.add('hidden');
 
-        const leftMergeCard = document.getElementById('leftCardMergeTiers');
-        if (modeId === 'fusion') leftMergeCard.classList.remove('hidden');
-        else leftMergeCard.classList.add('hidden');
+        ALL_MODE_CARDS.forEach(cardId => document.getElementById(cardId)?.classList.add('hidden'));
+        if (modeObj.leftPanelCard) document.getElementById(modeObj.leftPanelCard)?.classList.remove('hidden');
 
-        const p = modeObj.preset;
-        simConfig.circleRadiusRef = p.circleRadius;
-        simConfig.outlineThicknessRef = p.outlineThickness;
-        simConfig.openingSizeDeg = p.openingSize;
-        simConfig.spikeHeightRef = p.spikeHeight;
-        simConfig.spikeWidthRef = p.spikeWidth;
-        simConfig.ballRadiusRef = p.ballRadius;
-        simConfig.gravityRef = p.gravity;
-        simConfig.minBounceSpeedRef = p.minBounce;
-        simConfig.initSpeedXRef = p.initSpeedX;
-        simConfig.rotSpeedMult = p.rotSpeed;
-        simConfig.spikeCoverage = p.spikeCov;
-        simConfig.spikeStyle = p.spikeStyle;
-
-        simConfig.hookText = modeObj.defaultHookTop || '';
-        simConfig.bottomHookText = modeObj.defaultHookBot || '';
-        document.getElementById('inpCustomHook').value = simConfig.hookText;
-        document.getElementById('inpBottomHook').value = simConfig.bottomHookText;
+        if (modeId === 'fusion') sound.mergeSoundMode = simConfig.mergeSoundMode || 'pop';
 
         syncUIFromConfig();
     }
@@ -1040,6 +1170,10 @@ function syncUIFromConfig() {
 
     document.getElementById('rngRotSpeed').value = simConfig.rotSpeedMult;
     document.getElementById('valRotSpeed').textContent = simConfig.rotSpeedMult.toFixed(2) + 'x';
+    const modeSupportsRotation = Boolean(GAME_MODES.find(mode => mode.id === simConfig.mode)?.hasRotation);
+    document.getElementById('chkRotationEnabled').checked = Boolean(simConfig.rotationEnabled);
+    document.getElementById('rowRotationToggle').classList.toggle('hidden', !modeSupportsRotation);
+    document.getElementById('rowRotSpeed').classList.toggle('hidden', !modeSupportsRotation);
 
     document.getElementById('rngSpikeHeight').value = simConfig.spikeHeightRef;
     document.getElementById('valSpikeHeight').textContent = simConfig.spikeHeightRef + 'px';
@@ -1073,12 +1207,159 @@ function syncUIFromConfig() {
     document.getElementById('rngMeshDensity').value = simConfig.meshDensity;
     document.getElementById('valMeshDensity').textContent = simConfig.meshDensity + ' layers';
     document.getElementById('chkMultiplyRainbowWalls').checked = simConfig.multiplyRainbowWalls;
+
+    for (const [id, definition] of Object.entries(MODE_CONTROL_DEFINITIONS)) {
+        const input = document.getElementById(id);
+        if (!input) continue;
+        input.value = simConfig[definition.key];
+        const valueLabel = document.getElementById(id.replace('rng', 'val'));
+        if (valueLabel) valueLabel.textContent = definition.format(simConfig[definition.key]);
+    }
+
+    const configControls = {
+        selCountryPack: 'countryPack', selMergeTheme: 'mergeTheme',
+        selMergeSpriteMode: 'mergeSpriteMode', selMergeSoundMode: 'mergeSoundMode',
+        inpCustomHook: 'hookText', inpBottomHook: 'bottomHookText',
+        chkAudioSpectrum: 'audioSpectrum', chkFloatingText: 'floatingTextFX',
+        chkSuddenDeath: 'suddenDeath', chkEmoji: 'emojiFX',
+        chkReactiveBackground: 'reactiveBackground', chkGlowFX: 'glowFX',
+        chkWallGlowFX: 'wallGlowFX', chkColorTrails: 'colorTrails',
+        chkConfettiFX: 'confettiFX', chkShatterFX: 'shatterFX', chkShockwaveFX: 'shockwaveFX',
+        inpCustomBallEmoji: 'customBallEmoji', inpCenterEmoji: 'centerEmoji',
+        selCenterShape: 'centerShape', inpWatermarkText: 'watermarkText',
+        inpWatermarkSub: 'watermarkSub', inpSeed: 'seed',
+        chkRandomColors: 'randomColorsEachRound'
+    };
+    for (const [id, key] of Object.entries(configControls)) {
+        const input = document.getElementById(id);
+        if (!input || simConfig[key] === undefined) continue;
+        if (input.type === 'checkbox') input.checked = Boolean(simConfig[key]);
+        else input.value = simConfig[key];
+    }
+    document.getElementById('rngHookFontSize').value = simConfig.hookFontSize;
+    document.getElementById('valHookFontSize').textContent = `${simConfig.hookFontSize}px`;
+    document.getElementById('rngBottomHookFontSize').value = simConfig.bottomHookFontSize;
+    document.getElementById('valBottomHookFontSize').textContent = `${simConfig.bottomHookFontSize}px`;
+    document.getElementById('rngTrailThickness').value = simConfig.trailThickness;
+    document.getElementById('valTrailThickness').textContent = `${Number(simConfig.trailThickness).toFixed(1)}×`;
+    const hookPreset = document.getElementById('selHookPreset');
+    hookPreset.value = [...hookPreset.options].some(option => option.value === simConfig.hookText)
+        ? simConfig.hookText
+        : 'custom';
+    document.getElementById('selColorTheme').value = simConfig.themeName || 'ballsim';
+    document.getElementById('colGradStart').value = simConfig.gradStart;
+    document.getElementById('colGradEnd').value = simConfig.gradEnd;
+    document.getElementById('colBackground').value = simConfig.bgColor;
+    document.getElementById('rngMasterVol').value = sound.volume;
+    document.getElementById('chkSoundEnabled').checked = sound.enabled;
+    document.getElementById('chkPolyBass').checked = sound.polyBass;
+    document.getElementById('selInstrument').value = sound.instrument;
+    document.getElementById('selDeathSound').value = sound.deathSound;
+    document.getElementById('selEscapeSound').value = sound.escapeSound;
+    document.getElementById('selMergeSoundMode').value = sound.mergeSoundMode;
 }
 
 function resetSimulation() {
     sound.noteIdx = 0;
+    rememberActiveModeSettings();
     simState = createSimulationState(simConfig);
     document.getElementById('escapeBanner').classList.add('hidden');
+}
+
+function noteNameFromMidiNumber(number) {
+    const midi = Math.min(96, Math.max(24, number));
+    const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    return `${names[midi % 12]}${Math.floor(midi / 12) - 1}`;
+}
+
+function parseMidiNoteSequence(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    const readU32 = offset => ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
+    const readTag = offset => String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+    if (bytes.length < 14 || readTag(0) !== 'MThd') throw new Error('Header MIDI tidak valid');
+    const headerLength = readU32(4);
+    const trackCount = (bytes[10] << 8) | bytes[11];
+    const division = (bytes[12] << 8) | bytes[13];
+    if (!trackCount || (division & 0x8000)) throw new Error('Format timing MIDI tidak didukung');
+
+    let offset = 8 + headerLength;
+    const notes = [];
+    for (let track = 0; track < trackCount && offset + 8 <= bytes.length; track++) {
+        if (readTag(offset) !== 'MTrk') throw new Error('Track MIDI tidak valid');
+        const trackLength = readU32(offset + 4);
+        let cursor = offset + 8;
+        const end = Math.min(bytes.length, cursor + trackLength);
+        let runningStatus = 0;
+        let tick = 0;
+        const readVLQ = () => {
+            let value = 0;
+            let byte;
+            let count = 0;
+            do {
+                if (cursor >= end || count++ > 4) throw new Error('Data MIDI terpotong');
+                byte = bytes[cursor++];
+                value = (value << 7) | (byte & 0x7f);
+            } while (byte & 0x80);
+            return value;
+        };
+
+        while (cursor < end) {
+            tick += readVLQ();
+            const first = bytes[cursor++];
+            let status;
+            if (first & 0x80) {
+                status = first;
+                runningStatus = status < 0xf0 ? status : runningStatus;
+            } else {
+                if (!runningStatus) throw new Error('Running status MIDI tidak valid');
+                status = runningStatus;
+                cursor--;
+            }
+
+            if (status === 0xff) {
+                cursor++;
+                cursor += readVLQ();
+                continue;
+            }
+            if (status === 0xf0 || status === 0xf7) {
+                cursor += readVLQ();
+                continue;
+            }
+
+            const command = status >> 4;
+            const channel = status & 0x0f;
+            if (cursor >= end) throw new Error('Event MIDI tidak lengkap');
+            const pitch = bytes[cursor++];
+            const velocity = command === 0xc || command === 0xd ? 0 : (cursor < end ? bytes[cursor++] : 0);
+            if (channel !== 9 && command === 0x9 && velocity > 0) {
+                notes.push({ tick, pitch: noteNameFromMidiNumber(pitch), velocity });
+            }
+        }
+        offset = end;
+    }
+
+    notes.sort((a, b) => a.tick - b.tick || b.velocity - a.velocity);
+    const sequence = notes.slice(0, 512).map(note => note.pitch).filter(note => NOTE_TO_FREQ[note]);
+    if (!sequence.length) throw new Error('Tidak ada nada melodi yang ditemukan');
+    return sequence;
+}
+
+function setMelodySequence(sequence, label, selection = 'custom') {
+    if (!Array.isArray(sequence) || !sequence.length) return false;
+    sound.sequence = sequence.filter(note => typeof note === 'string' && NOTE_TO_FREQ[note]);
+    if (!sound.sequence.length) return false;
+    sound.noteIdx = 0;
+    document.getElementById('inpMelodyNotes').value = sound.sequence.join(' ');
+    document.getElementById('midiStatusText').textContent = label;
+    const select = document.getElementById('selMelody');
+    if (selection === 'custom' && ![...select.options].some(option => option.value === 'custom')) {
+        const option = document.createElement('option');
+        option.value = 'custom';
+        option.textContent = 'Custom / MIDI Import';
+        select.appendChild(option);
+    }
+    select.value = selection;
+    return true;
 }
 
 // Multiply Gates Exclusive Event Listeners
@@ -1130,30 +1411,56 @@ document.getElementById('btnRandomizeGates').addEventListener('click', () => {
     resetSimulation();
 });
 
-// Other Mode-Specific Controls
-document.getElementById('rngSpikedSpiralTurns').addEventListener('input', (e) => {
-    simConfig.spikedSpiralTurns = parseFloat(e.target.value);
-    document.getElementById('valSpikedSpiralTurns').textContent = simConfig.spikedSpiralTurns + ' turns';
+// Global country roster is shared by both country modes.
+document.getElementById('selCountryPack').addEventListener('change', event => {
+    simConfig.countryPack = event.target.value;
     resetSimulation();
 });
-document.getElementById('rngStreamSpawnRate').addEventListener('input', (e) => {
-    simConfig.streamSpawnRate = parseInt(e.target.value, 10);
-    document.getElementById('valStreamSpawnRate').textContent = simConfig.streamSpawnRate + 'f';
+
+document.getElementById('selMergeTheme').addEventListener('change', event => {
+    simConfig.mergeTheme = event.target.value;
+    simConfig.modeSettings.fusion.tierOverrides = null;
+    applyMergeTierTheme(simConfig.mergeTheme, false);
+    if (simConfig.mode === 'fusion') resetSimulation();
 });
-document.getElementById('rngGlassShardCount').addEventListener('input', (e) => {
-    simConfig.glassShardCount = parseInt(e.target.value, 10);
-    document.getElementById('valGlassShardCount').textContent = simConfig.glassShardCount + ' shards';
+document.getElementById('selMergeSpriteMode').addEventListener('change', event => {
+    simConfig.mergeSpriteMode = event.target.value;
 });
-document.getElementById('rngBeadSpiralTurns').addEventListener('input', (e) => {
-    simConfig.beadSpiralTurns = parseFloat(e.target.value);
-    document.getElementById('valBeadSpiralTurns').textContent = simConfig.beadSpiralTurns + ' turns';
-    resetSimulation();
+document.getElementById('selMergeSoundMode').addEventListener('change', event => {
+    simConfig.mergeSoundMode = event.target.value;
+    simConfig.modeSettings.fusion.mergeSoundMode = event.target.value;
+    sound.mergeSoundMode = event.target.value;
 });
-document.getElementById('rngBeadSubRows').addEventListener('input', (e) => {
-    simConfig.beadSubRows = parseInt(e.target.value, 10);
-    document.getElementById('valBeadSubRows').textContent = simConfig.beadSubRows + ' rows';
-    resetSimulation();
+document.getElementById('inpCustomMergeAudio').addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const status = document.getElementById('customSfxStatus');
+    status.textContent = 'Memuat audio…';
+    try {
+        await sound.loadCustomAudioFile(file);
+        status.textContent = file.name.slice(0, 28);
+    } catch {
+        status.textContent = 'Audio tidak dapat dibaca';
+    }
 });
+document.getElementById('btnResetMergeTiers').addEventListener('click', () => {
+    simConfig.modeSettings.fusion.tierOverrides = null;
+    applyMergeTierTheme(simConfig.mergeTheme, false);
+});
+
+// Mode-specific controls are bound from the same definitions used by UI sync.
+for (const [id, definition] of Object.entries(MODE_CONTROL_DEFINITIONS)) {
+    const input = document.getElementById(id);
+    if (!input) continue;
+    input.addEventListener('input', event => {
+        const value = Number(event.target.value);
+        if (!Number.isFinite(value)) return;
+        simConfig[definition.key] = value;
+        const valueLabel = document.getElementById(id.replace('rng', 'val'));
+        if (valueLabel) valueLabel.textContent = definition.format(value);
+        if (definition.reset) resetSimulation();
+    });
+}
 
 // Standard Geometry & Physics Sliders
 document.getElementById('rngCircleRadius').addEventListener('input', (e) => {
@@ -1168,6 +1475,10 @@ document.getElementById('rngOutlineThickness').addEventListener('input', (e) => 
 document.getElementById('rngOpeningSize').addEventListener('input', (e) => {
     simConfig.openingSizeDeg = parseInt(e.target.value, 10);
     document.getElementById('valOpeningSize').textContent = simConfig.openingSizeDeg + '°';
+    resetSimulation();
+});
+document.getElementById('chkRotationEnabled').addEventListener('change', e => {
+    simConfig.rotationEnabled = e.target.checked;
     resetSimulation();
 });
 document.getElementById('rngRotSpeed').addEventListener('input', (e) => {
@@ -1212,7 +1523,7 @@ document.getElementById('rngInitSpeedX').addEventListener('input', (e) => {
 document.getElementById('btnRandomizeSettings').addEventListener('click', () => {
     simConfig.seed = Math.floor(1000 + Math.random() * 90000);
     document.getElementById('inpSeed').value = simConfig.seed;
-    if (simConfig.mode === 'multiply_gates') {
+    if (['multiply_gates', 'target', 'portal'].includes(simConfig.mode)) {
         const styles = ['hexagons', 'hourglass', 'triangles', 'diamonds'];
         simConfig.glassStyle = styles[Math.floor(Math.random() * styles.length)];
         simConfig.gateLayout = 'random';
@@ -1220,7 +1531,164 @@ document.getElementById('btnRandomizeSettings').addEventListener('click', () => 
     syncUIFromConfig();
     resetSimulation();
 });
-document.getElementById('btnResetSettings').addEventListener('click', () => selectGameMode(simConfig.mode));
+document.getElementById('btnResetSettings').addEventListener('click', () => selectGameMode(simConfig.mode, true));
+
+// Presets store simulation and visual configuration in the browser. Uploaded
+// image/audio files remain session-local because browsers cannot restore a
+// user's local file selection from a saved preset.
+const PRESET_STORAGE_KEY = 'ballsimulator.presets.v1';
+
+function readSavedPresets() {
+    try {
+        const value = JSON.parse(localStorage.getItem(PRESET_STORAGE_KEY) || '{}');
+        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch {
+        return {};
+    }
+}
+
+function refreshSavedPresetList(selectName = '') {
+    const select = document.getElementById('selSavedPresets');
+    const presets = readSavedPresets();
+    select.innerHTML = '';
+    const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
+    if (!names.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Belum ada preset tersimpan';
+        select.appendChild(option);
+        return;
+    }
+    for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+    }
+    if (selectName && names.includes(selectName)) select.value = selectName;
+}
+
+function setPresetStatus(message, isError = false) {
+    const badge = document.getElementById('presetStatusBadge');
+    badge.textContent = message;
+    badge.className = `text-[10px] mono ${isError ? 'text-rose-400' : 'text-emerald-400'}`;
+}
+
+document.getElementById('btnSavePreset').addEventListener('click', () => {
+    const name = document.getElementById('inpPresetName').value.trim();
+    if (!name) {
+        setPresetStatus('Isi nama preset', true);
+        return;
+    }
+    try {
+        rememberActiveModeSettings();
+        const presets = readSavedPresets();
+        presets[name] = {
+            version: 2,
+            config: JSON.parse(JSON.stringify(simConfig)),
+            audio: {
+                volume: sound.volume,
+                enabled: sound.enabled,
+                instrument: sound.instrument,
+                deathSound: sound.deathSound,
+                escapeSound: sound.escapeSound,
+                polyBass: sound.polyBass,
+                sequence: sound.sequence
+            }
+        };
+        localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
+        refreshSavedPresetList(name);
+        setPresetStatus('Tersimpan');
+    } catch {
+        setPresetStatus('Gagal menyimpan', true);
+    }
+});
+
+document.getElementById('btnLoadPreset').addEventListener('click', () => {
+    const name = document.getElementById('selSavedPresets').value;
+    const entry = readSavedPresets()[name];
+    const saved = entry && [1, 2].includes(entry.version) && entry.config;
+    if (!saved || !GAME_MODES.some(mode => mode.id === saved.mode)) {
+        setPresetStatus('Preset tidak valid', true);
+        return;
+    }
+    selectGameMode(saved.mode, true);
+    const safeKeys = Object.keys(simConfig).filter(key => key !== 'modeSettings' && key in saved);
+    for (const key of safeKeys) simConfig[key] = saved[key];
+    if (typeof saved.wallBreakFX === 'boolean') {
+        for (const key of ['confettiFX', 'shatterFX', 'shockwaveFX']) {
+            if (typeof saved[key] !== 'boolean') simConfig[key] = saved.wallBreakFX;
+        }
+    }
+    if (saved.modeSettings && typeof saved.modeSettings === 'object') {
+        simConfig.modeSettings = Object.fromEntries(
+            Object.entries(MODE_SETTING_DEFAULTS).map(([modeId, defaults]) => {
+                const stored = saved.modeSettings[modeId];
+                const safeSettings = {};
+                for (const key of Object.keys(defaults)) {
+                    const legacyValue = modeId === saved.mode && key in saved ? saved[key] : undefined;
+                    const value = stored?.[key] !== undefined ? stored[key] : legacyValue;
+                    const valid = typeof value === typeof defaults[key] &&
+                        (typeof value !== 'number' || Number.isFinite(value));
+                    safeSettings[key] = valid ? value : defaults[key];
+                }
+                return [modeId, safeSettings];
+            })
+        );
+    } else {
+        // Migrate older flattened presets into the active mode's new settings bucket.
+        const defaults = MODE_SETTING_DEFAULTS[saved.mode] || {};
+        const migrated = { ...defaults };
+        for (const [key, defaultValue] of Object.entries(defaults)) {
+            const value = saved[key];
+            if (value !== undefined && typeof value === typeof defaultValue &&
+                (typeof value !== 'number' || Number.isFinite(value))) {
+                migrated[key] = value;
+            }
+        }
+        simConfig.modeSettings = Object.fromEntries(
+            Object.entries(MODE_SETTING_DEFAULTS).map(([modeId, modeDefaults]) =>
+                [modeId, modeId === saved.mode ? migrated : { ...modeDefaults }])
+        );
+    }
+    activateModeSettings(saved.mode, false);
+    const audio = entry.audio || {};
+    if (Number.isFinite(audio.volume)) sound.volume = Math.min(1, Math.max(0, audio.volume));
+    for (const key of ['enabled', 'instrument', 'deathSound', 'escapeSound', 'polyBass']) {
+        if (audio[key] !== undefined && typeof audio[key] === typeof sound[key]) sound[key] = audio[key];
+    }
+    if (saved.mode === 'fusion') {
+        const mergeSoundMode = simConfig.mergeSoundMode || audio.mergeSoundMode || 'pop';
+        simConfig.mergeSoundMode = mergeSoundMode;
+        simConfig.modeSettings.fusion.mergeSoundMode = mergeSoundMode;
+        sound.mergeSoundMode = mergeSoundMode;
+    }
+    if (Array.isArray(audio.sequence) && audio.sequence.every(note => typeof note === 'string' && NOTE_TO_FREQ[note])) {
+        sound.sequence = [...audio.sequence];
+    }
+    const melodyMatch = Object.entries(MELODIES).find(([, notes]) => notes.length === sound.sequence.length && notes.every((note, index) => note === sound.sequence[index]));
+    setMelodySequence(sound.sequence, melodyMatch ? 'Melodi preset dimuat' : 'Urutan nada preset dimuat', melodyMatch?.[0] || 'custom');
+    if (sound.masterGain) sound.masterGain.gain.value = sound.volume;
+    syncUIFromConfig();
+    resetSimulation();
+    setPresetStatus('Preset dimuat');
+});
+
+document.getElementById('btnDeletePreset').addEventListener('click', () => {
+    const name = document.getElementById('selSavedPresets').value;
+    if (!name) return;
+    try {
+        const presets = readSavedPresets();
+        delete presets[name];
+        localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presets));
+        refreshSavedPresetList();
+        setPresetStatus('Preset dihapus');
+    } catch {
+        setPresetStatus('Gagal menghapus', true);
+    }
+});
+
+refreshSavedPresetList();
 
 // Hooks & Audio
 document.getElementById('selHookPreset').addEventListener('change', (e) => {
@@ -1235,6 +1703,29 @@ document.getElementById('chkAudioSpectrum').addEventListener('change', (e) => si
 document.getElementById('chkPolyBass').addEventListener('change', (e) => sound.polyBass = e.target.checked);
 document.getElementById('chkFloatingText').addEventListener('change', (e) => simConfig.floatingTextFX = e.target.checked);
 document.getElementById('chkSuddenDeath').addEventListener('change', (e) => simConfig.suddenDeath = e.target.checked);
+document.getElementById('chkEmoji').addEventListener('change', (e) => simConfig.emojiFX = e.target.checked);
+document.getElementById('chkReactiveBackground').addEventListener('change', e => simConfig.reactiveBackground = e.target.checked);
+document.getElementById('chkGlowFX').addEventListener('change', e => simConfig.glowFX = e.target.checked);
+document.getElementById('chkWallGlowFX').addEventListener('change', e => simConfig.wallGlowFX = e.target.checked);
+document.getElementById('chkColorTrails').addEventListener('change', e => {
+    simConfig.colorTrails = e.target.checked;
+    trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+});
+document.getElementById('chkConfettiFX').addEventListener('change', e => simConfig.confettiFX = e.target.checked);
+document.getElementById('chkShatterFX').addEventListener('change', e => simConfig.shatterFX = e.target.checked);
+document.getElementById('chkShockwaveFX').addEventListener('change', e => simConfig.shockwaveFX = e.target.checked);
+document.getElementById('rngTrailThickness').addEventListener('input', e => {
+    simConfig.trailThickness = Number(e.target.value);
+    document.getElementById('valTrailThickness').textContent = `${simConfig.trailThickness.toFixed(1)}×`;
+});
+document.getElementById('rngHookFontSize').addEventListener('input', e => {
+    simConfig.hookFontSize = Number(e.target.value);
+    document.getElementById('valHookFontSize').textContent = `${simConfig.hookFontSize}px`;
+});
+document.getElementById('rngBottomHookFontSize').addEventListener('input', e => {
+    simConfig.bottomHookFontSize = Number(e.target.value);
+    document.getElementById('valBottomHookFontSize').textContent = `${simConfig.bottomHookFontSize}px`;
+});
 
 document.getElementById('rngMasterVol').addEventListener('input', (e) => {
     sound.volume = parseFloat(e.target.value);
@@ -1242,8 +1733,48 @@ document.getElementById('rngMasterVol').addEventListener('input', (e) => {
 });
 document.getElementById('chkSoundEnabled').addEventListener('change', (e) => sound.enabled = e.target.checked);
 document.getElementById('selMelody').addEventListener('change', (e) => {
-    sound.sequence = [...(MELODIES[e.target.value] || MELODIES.arpeggio)];
-    sound.noteIdx = 0;
+    if (e.target.value === 'custom') return;
+    setMelodySequence(MELODIES[e.target.value] || MELODIES.arpeggio, `Melodi bawaan: ${e.target.selectedOptions[0]?.textContent || e.target.value}`, e.target.value);
+});
+document.getElementById('btnApplyMelodyNotes').addEventListener('click', () => {
+    const notes = document.getElementById('inpMelodyNotes').value.trim().split(/[\s,;|]+/).filter(Boolean).map(note => note.toUpperCase());
+    const invalid = notes.find(note => !NOTE_TO_FREQ[note]);
+    if (!notes.length || invalid) {
+        document.getElementById('midiStatusText').textContent = invalid ? `Nada tidak dikenal: ${invalid}` : 'Masukkan urutan nada';
+        return;
+    }
+    setMelodySequence(notes, `${notes.length} nada kustom aktif`);
+});
+document.getElementById('inpMidiFile').addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const status = document.getElementById('midiStatusText');
+    status.textContent = 'Membaca MIDI…';
+    try {
+        const sequence = parseMidiNoteSequence(await file.arrayBuffer());
+        setMelodySequence(sequence, `${file.name}: ${sequence.length} nada diimpor`);
+    } catch (error) {
+        status.textContent = error.message || 'MIDI tidak dapat dibaca';
+    }
+});
+function searchMelodyLibrary() {
+    const query = document.getElementById('inpSongSearch').value.trim().toLowerCase();
+    const results = document.getElementById('songSearchResults');
+    results.replaceChildren();
+    const matches = STREAMING_CATALOG.filter(item => !query || item.title.toLowerCase().includes(query));
+    for (const item of matches) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'w-full text-left px-2 py-1 rounded bg-[#0b0d14] hover:bg-slate-800 text-[11px] text-slate-200';
+        button.textContent = `${item.title} · ${item.platform}`;
+        button.addEventListener('click', () => setMelodySequence(item.notes, `Melodi bawaan: ${item.title}`));
+        results.appendChild(button);
+    }
+    if (!matches.length) results.textContent = 'Tidak ada melodi bawaan yang cocok.';
+}
+document.getElementById('btnSongSearch').addEventListener('click', searchMelodyLibrary);
+document.getElementById('inpSongSearch').addEventListener('keydown', event => {
+    if (event.key === 'Enter') searchMelodyLibrary();
 });
 document.getElementById('selInstrument').addEventListener('change', (e) => sound.instrument = e.target.value);
 document.getElementById('selDeathSound').addEventListener('change', (e) => {
@@ -1253,6 +1784,41 @@ document.getElementById('selDeathSound').addEventListener('change', (e) => {
 document.getElementById('selEscapeSound').addEventListener('change', (e) => {
     sound.escapeSound = e.target.value;
     sound.playEscapeSFX();
+});
+
+document.getElementById('selColorTheme').addEventListener('change', (e) => {
+    if (e.target.value === 'custom') {
+        simConfig.themeName = 'custom';
+        return;
+    }
+    const theme = COLOR_THEMES[e.target.value];
+    if (!theme) return;
+    simConfig.themeName = e.target.value;
+    simConfig.gradStart = theme.start;
+    simConfig.gradEnd = theme.end;
+    simConfig.bgColor = theme.bg;
+    document.getElementById('colGradStart').value = theme.start;
+    document.getElementById('colGradEnd').value = theme.end;
+    resetSimulation();
+});
+document.getElementById('colGradStart').addEventListener('input', (e) => {
+    simConfig.gradStart = e.target.value;
+    simConfig.themeName = 'custom';
+    resetSimulation();
+});
+document.getElementById('colGradEnd').addEventListener('input', (e) => {
+    simConfig.gradEnd = e.target.value;
+    simConfig.themeName = 'custom';
+    resetSimulation();
+});
+document.getElementById('colBackground').addEventListener('input', (e) => {
+    simConfig.bgColor = e.target.value;
+    simConfig.themeName = 'custom';
+    resetSimulation();
+});
+document.getElementById('chkRandomColors').addEventListener('change', (e) => {
+    simConfig.randomColorsEachRound = e.target.checked;
+    resetSimulation();
 });
 
 // Ball & Center Image/Emoji Customizer
@@ -1309,21 +1875,217 @@ document.getElementById('inpWatermarkSub').addEventListener('input', (e) => simC
 
 // Playback Controls
 document.getElementById('btnRestart').addEventListener('click', resetSimulation);
-document.getElementById('btnPlayPause').addEventListener('click', () => {
-    isPaused = !isPaused;
+function syncPlayPauseButton() {
     document.getElementById('playPauseIcon').textContent = isPaused ? '▶️' : '⏸';
     document.getElementById('playPauseText').textContent = isPaused ? 'Play' : 'Pause';
+}
+document.getElementById('btnPlayPause').addEventListener('click', () => {
+    isPaused = !isPaused;
+    syncPlayPauseButton();
 });
 document.getElementById('btnApplySeed').addEventListener('click', () => {
     simConfig.seed = parseInt(document.getElementById('inpSeed').value, 10) || 1042;
     resetSimulation();
 });
 
+function updatePlaybackSpeedButtons() {
+    for (const button of document.querySelectorAll('.speed-pill')) {
+        const active = Number(button.dataset.speed) === playbackSpeed;
+        button.classList.toggle('bg-slate-700', active);
+        button.classList.toggle('text-white', active);
+        button.classList.toggle('text-slate-400', !active);
+    }
+}
+for (const button of document.querySelectorAll('.speed-pill')) {
+    button.addEventListener('click', () => {
+        if (mediaRecorder?.state === 'recording') return;
+        playbackSpeed = Number(button.dataset.speed) || 1;
+        updatePlaybackSpeedButtons();
+    });
+}
+
+function setRecordingUI(isRecording, message) {
+    const button = document.getElementById('btnRecord');
+    button.textContent = isRecording ? '⏹ Stop Recording' : '⏺ Record WebM';
+    document.getElementById('recordStatus').textContent = message;
+}
+
+function stopVideoRecording() {
+    if (recordingTimer) clearTimeout(recordingTimer);
+    recordingTimer = null;
+    if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+}
+
+async function startVideoRecording() {
+    if (typeof MediaRecorder === 'undefined' || !recordingCanvas.captureStream) {
+        setRecordingUI(false, 'Browser tidak mendukung rekaman WebM');
+        return;
+    }
+
+    const duration = Math.min(90, Math.max(5, Number(document.getElementById('inpRecordDuration').value) || 22));
+    document.getElementById('inpRecordDuration').value = duration;
+    speedBeforeRecording = playbackSpeed;
+    pauseBeforeRecording = isPaused;
+    playbackSpeed = 1;
+    updatePlaybackSpeedButtons();
+    isPaused = false;
+    syncPlayPauseButton();
+    try { sound.init(); } catch { /* keep video recording available without audio */ }
+
+    let recordingStream;
+    try {
+        const videoStream = recordingCanvas.captureStream(60);
+        const audioTracks = sound.destNode?.stream?.getAudioTracks() || [];
+        recordingStream = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
+    } catch (error) {
+        playbackSpeed = speedBeforeRecording;
+        isPaused = pauseBeforeRecording;
+        updatePlaybackSpeedButtons();
+        syncPlayPauseButton();
+        setRecordingUI(false, `Gagal menyiapkan rekaman: ${error.message}`);
+        return;
+    }
+    const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+        .find(type => MediaRecorder.isTypeSupported(type));
+    try {
+        mediaRecorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+    } catch (error) {
+        recordingStream.getTracks().forEach(track => track.stop());
+        playbackSpeed = speedBeforeRecording;
+        isPaused = pauseBeforeRecording;
+        updatePlaybackSpeedButtons();
+        syncPlayPauseButton();
+        setRecordingUI(false, `Gagal memulai rekaman: ${error.message}`);
+        return;
+    }
+
+    const recorder = mediaRecorder;
+    recordingChunks = [];
+    recorder.ondataavailable = event => {
+        if (event.data?.size) recordingChunks.push(event.data);
+    };
+    recorder.onstop = () => {
+        const blob = new Blob(recordingChunks, { type: recorder.mimeType || 'video/webm' });
+        if (blob.size) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ballsim-${simConfig.mode}-${simConfig.seed}.webm`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            setRecordingUI(false, `Tersimpan · ${(blob.size / 1048576).toFixed(1)} MB`);
+        } else {
+            setRecordingUI(false, 'Rekaman kosong');
+        }
+        recordingStream.getTracks().forEach(track => track.stop());
+        mediaRecorder = null;
+        playbackSpeed = speedBeforeRecording;
+        isPaused = pauseBeforeRecording;
+        updatePlaybackSpeedButtons();
+        syncPlayPauseButton();
+        if (autoBatchEnabled) {
+            setTimeout(() => {
+                if (!autoBatchEnabled) return;
+                simConfig.seed = Math.floor(1000 + Math.random() * 90000);
+                document.getElementById('inpSeed').value = simConfig.seed;
+                resetSimulation();
+                startVideoRecording();
+            }, 700);
+        }
+    };
+    recorder.onerror = () => {
+        setRecordingUI(false, 'Terjadi kesalahan saat merekam');
+        stopVideoRecording();
+    };
+    recorder.start(250);
+    setRecordingUI(true, `Merekam ${duration} detik · 1080×1920 · 1×`);
+    recordingTimer = setTimeout(stopVideoRecording, duration * 1000);
+}
+
+document.getElementById('btnRecord').addEventListener('click', () => {
+    if (mediaRecorder?.state === 'recording') {
+        autoBatchEnabled = false;
+        document.getElementById('btnBatchMode').textContent = '🔁 Auto-Batch: OFF';
+        stopVideoRecording();
+    } else {
+        startVideoRecording();
+    }
+});
+document.getElementById('btnBatchMode').addEventListener('click', () => {
+    autoBatchEnabled = !autoBatchEnabled;
+    document.getElementById('btnBatchMode').textContent = `🔁 Auto-Batch: ${autoBatchEnabled ? 'ON' : 'OFF'}`;
+    if (autoBatchEnabled && mediaRecorder?.state !== 'recording') startVideoRecording();
+});
+
+let seedSearchToken = 0;
+let seedSearchRunning = false;
+const autoFindButton = document.getElementById('btnAutoSearch');
+autoFindButton.addEventListener('click', async () => {
+    if (seedSearchRunning) {
+        seedSearchToken++;
+        seedSearchRunning = false;
+        autoFindButton.textContent = '🔍 Auto-Find Seed';
+        document.getElementById('searchStatus').textContent = 'Pencarian dibatalkan.';
+        return;
+    }
+
+    const targetSeconds = Math.min(90, Math.max(5, Number(document.getElementById('inpTargetSec').value) || 22));
+    document.getElementById('inpTargetSec').value = targetSeconds;
+    const targetTicks = targetSeconds * 60;
+    const maxTicks = targetTicks + 180;
+    const firstSeed = Math.max(1, Number(document.getElementById('inpSeed').value) || 1042);
+    const searchToken = ++seedSearchToken;
+    seedSearchRunning = true;
+    autoFindButton.textContent = '✕ Stop Search';
+    const status = document.getElementById('searchStatus');
+    status.classList.remove('hidden');
+
+    try {
+        const maxCandidates = 80;
+        for (let candidate = 0; candidate < maxCandidates && seedSearchRunning && searchToken === seedSearchToken; candidate++) {
+            const seed = firstSeed + candidate;
+            const searchConfig = { ...simConfig, seed };
+            const searchState = createSimulationState(searchConfig, seed, true);
+            let elapsedTicks = 0;
+            while (elapsedTicks < maxTicks && !searchState.escaped && searchToken === seedSearchToken) {
+                const end = Math.min(maxTicks, elapsedTicks + 120);
+                while (elapsedTicks < end && !searchState.escaped) {
+                    stepPhysics(searchState, searchConfig, true);
+                    elapsedTicks++;
+                }
+                status.textContent = `Menguji seed ${candidate + 1}/${maxCandidates} · ${seed} · ${Math.floor(elapsedTicks / 60)}s`;
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            if (searchToken !== seedSearchToken) break;
+            const duration = searchState.escapeTime === null ? NaN : Number(searchState.escapeTime);
+            if (Number.isFinite(duration) && Math.abs(duration - targetSeconds) <= 0.5) {
+                simConfig.seed = seed;
+                document.getElementById('inpSeed').value = seed;
+                resetSimulation();
+                status.textContent = `Seed ${seed} cocok · simulasi sudah diulang · selesai sekitar ${duration.toFixed(1)}s (target ${targetSeconds}s).`;
+                return;
+            }
+        }
+        if (searchToken === seedSearchToken) status.textContent = `Belum ada seed cocok dalam ${maxCandidates} percobaan. Coba target lain atau mulai dari seed berbeda.`;
+    } catch (error) {
+        status.textContent = `Pencarian gagal: ${error.message || 'kesalahan simulasi'}`;
+    } finally {
+        if (searchToken === seedSearchToken) {
+            seedSearchRunning = false;
+            autoFindButton.textContent = '🔍 Auto-Find Seed';
+        }
+    }
+});
+
 // Main 60FPS Animation Loop
 function animate() {
     if (!isPaused && simState) {
-        stepPhysics(simState, simConfig, false);
+        const stepsThisFrame = mediaRecorder?.state === 'recording' ? 1 : playbackSpeed;
+        for (let step = 0; step < stepsThisFrame; step++) stepPhysics(simState, simConfig, false);
         renderSimulation(simState, simConfig);
+        if (mediaRecorder?.state === 'recording') {
+            recordingCtx.drawImage(canvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+        }
 
         document.getElementById('statBallsLost').textContent = simState.ballsLost;
         document.getElementById('statEscapedCount').textContent = simState.escapedCount;
@@ -1344,5 +2106,7 @@ function animate() {
 }
 
 // Boot directly on Multiply Gates Center so you can test it immediately!
+document.getElementById('inpMelodyNotes').value = sound.sequence.join(' ');
+searchMelodyLibrary();
 selectGameMode('multiply_gates');
 requestAnimationFrame(animate);

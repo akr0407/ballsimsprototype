@@ -1,7 +1,7 @@
 /*************************************************************************
  * FILE 4A: engine.js (PURE PHYSICS & STATE ENGINE)
  * Berisi:
- * - Inisialisasi State 16 Mode
+ * - Inisialisasi State 22 Mode
  * - Polish 1:1 Multiply Gates Center (Static Spiral, Top White Triangle Bumper,
  *   4 Glass Obstacle Types, Random/Custom Gate Layouts, Continuous Post-Goal Spawn)
  * - Spiked Spiral Center, Beaded Spiral Progress, & Bouncy Merge 2048
@@ -68,14 +68,25 @@ let simConfig = {
     mergeTheme: 'video1_faces',
     mergeSpriteMode: 'circle',
     randomColorsEachRound: false,
+    themeName: 'ballsim',
     gradStart: '#a855f7',
     gradEnd: '#22d3ee',
     bgColor: '#000000',
     hookText: 'Will the Ball Multiply ?',
     bottomHookText: 'Did you recognize the sounds?',
+    hookFontSize: 22,
+    bottomHookFontSize: 15,
     audioSpectrum: false,
     floatingTextFX: true,
     suddenDeath: false,
+    reactiveBackground: false,
+    glowFX: false,
+    wallGlowFX: false,
+    colorTrails: false,
+    trailThickness: 0.8,
+    confettiFX: true,
+    shatterFX: true,
+    shockwaveFX: true,
     countryPack: 'asean',
     emojiFX: false,
     customBallEmoji: '',
@@ -85,6 +96,81 @@ let simConfig = {
     watermarkSub: ''
 };
 
+// Per-mode defaults and remembered values are kept separate from the shared
+// physics/visual settings, while the engine continues to read the active
+// values through simConfig for compatibility with existing mode logic.
+const MODE_EXCLUSIVE_DEFAULTS = {
+    spiked_spiral: { spikedSpiralTurns: 6.0, streamSpawnRate: 16, glassShardCount: 10 },
+    multiply_gates: { glassStyle: 'hexagons', gateLayout: 'scattered', centerPortalStyle: 'blackhole', gateCount: 4, gateIncrement: 1, meshDensity: 8, multiplyRainbowWalls: false },
+    beaded_spiral: { beadSpiralTurns: 4.5, beadSubRows: 3 },
+    fusion: { spawnIntervalTicks: 34, mergeTheme: 'video1_faces', mergeSpriteMode: 'circle', mergeSoundMode: 'pop', tierOverrides: null },
+    accumulation: {},
+    classic: { classicRingCount: 24, classicPhaseShift: 0.14 },
+    destruction: { beadRingLayers: 10, beadDotSize: 3.2 },
+    infinite: { multiplyFactor: 2 },
+    web_expansion: { ballGrowthRate: 0.45 },
+    trail_expansion: { ballGrowthRate: 0.45 },
+    fragment: { fragmentMaxCount: 32 },
+    spiral: { spiralTurns: 4.2 },
+    collision: { collisionBurstCount: 24 },
+    web_battle: { royaleDamageMult: 1.0 },
+    eating_balls: { eatingInitialCount: 22 },
+    country_royale: { royaleDamageMult: 1.0 },
+    lines: { ballGrowthRate: 0.45 },
+    paint: { ballGrowthRate: 0.45 },
+    target: { glassStyle: "hexagons", gateLayout: "scattered", centerPortalStyle: "blackhole", gateCount: 4, gateIncrement: 1, meshDensity: 8, multiplyRainbowWalls: false },
+    grow: { ballGrowthRate: 0.45 },
+    shatter: { beadRingLayers: 10, beadDotSize: 3.2 },
+    portal: { glassStyle: "hexagons", gateLayout: "scattered", centerPortalStyle: "blackhole", gateCount: 4, gateIncrement: 1, meshDensity: 8, multiplyRainbowWalls: false }
+};
+
+const MODE_SETTING_DEFAULTS = Object.fromEntries(GAME_MODES.map(mode => {
+    const p = mode.preset;
+    return [mode.id, {
+        circleRadiusRef: p.circleRadius,
+        outlineThicknessRef: p.outlineThickness,
+        openingSizeDeg: p.openingSize,
+        spikeHeightRef: p.spikeHeight,
+        spikeWidthRef: p.spikeWidth,
+        ballRadiusRef: p.ballRadius,
+        gravityRef: p.gravity,
+        minBounceSpeedRef: p.minBounce,
+        initSpeedXRef: p.initSpeedX,
+        rotSpeedMult: p.rotSpeed,
+        spikeCoverage: p.spikeCov,
+        spikeStyle: p.spikeStyle,
+        rotationEnabled: Boolean(mode.hasRotation && p.rotSpeed > 0),
+        hookText: mode.defaultHookTop || '',
+        bottomHookText: mode.defaultHookBot || '',
+        ...(MODE_EXCLUSIVE_DEFAULTS[mode.id] || {})
+    }];
+}));
+const ALL_MODE_SETTING_KEYS = new Set(Object.values(MODE_SETTING_DEFAULTS).flatMap(settings => Object.keys(settings)));
+
+simConfig.modeSettings = Object.fromEntries(
+    Object.entries(MODE_SETTING_DEFAULTS).map(([mode, settings]) => [mode, { ...settings }])
+);
+
+function rememberActiveModeSettings() {
+    const settings = MODE_SETTING_DEFAULTS[simConfig.mode];
+    if (!settings) return;
+    const remembered = simConfig.modeSettings[simConfig.mode] || {};
+    for (const key of Object.keys(settings)) {
+        if (key === 'tierOverrides') continue;
+        remembered[key] = simConfig[key];
+    }
+    simConfig.modeSettings[simConfig.mode] = remembered;
+}
+
+function activateModeSettings(modeId, resetToDefaults = false) {
+    const defaults = MODE_SETTING_DEFAULTS[modeId] || {};
+    const remembered = simConfig.modeSettings[modeId] || {};
+    if (resetToDefaults) simConfig.modeSettings[modeId] = { ...defaults };
+    const { tierOverrides: _tierOverrides, ...active } = resetToDefaults ? defaults : { ...defaults, ...remembered };
+    for (const key of ALL_MODE_SETTING_KEYS) delete simConfig[key];
+    Object.assign(simConfig, active);
+}
+
 let simState = null;
 let isPaused = false;
 
@@ -93,83 +179,16 @@ function getAlignedSpikedSpiralTurns(config) {
 }
 
 /*************************************************************************
- * 1. STATE INITIALIZATION & GEOMETRY BUILDERS FOR ALL 16 MODES
+ * 1. STATE INITIALIZATION & GEOMETRY BUILDERS FOR ALL 22 MODES
  *************************************************************************/
-function createSimulationState(config, seedOverride) {
-    const seed = seedOverride !== undefined ? seedOverride : config.seed;
-    const rng = createPRNG(seed);
-
-    const maxOuterR = config.circleRadiusRef * SCALE_1080;
-    const gapRad = (config.openingSizeDeg * Math.PI) / 180;
-    const baseBallR = Math.max(5, config.ballRadiusRef * SCALE_1080 * 0.72);
-
-    let gStart = config.gradStart;
-    let gEnd = config.gradEnd;
-    let bgCol = config.bgColor;
-
-    if (config.randomColorsEachRound && !['fusion', 'spiked_spiral', 'multiply_gates', 'beaded_spiral'].includes(config.mode)) {
-        const h1 = Math.floor(rng() * 360);
-        const h2 = (h1 + 65 + Math.floor(rng() * 90)) % 360;
-        gStart = hslToHex(h1, 90, 60);
-        gEnd = hslToHex(h2, 90, 58);
-        bgCol = hslToHex(h1, 45, 9);
-    }
-
-    const state = {
-        seed,
-        rng,
-        ticks: 0,
-        bounces: 0,
-        ballsLost: 0,
-        escapedCount: config.mode === 'fusion' ? 1 : 0,
-        escaped: false,
-        goalReachedCount: 0,
-        goalCelebrationTimer: 0,
-        escapeTime: null,
-        winnerText: null,
-        gradStart: gStart,
-        gradEnd: gEnd,
-        bgColor: bgCol,
-        balls: [],
-        rings: [],
-        beads: [],
-        pinnedBalls: [],
-        webLines: [],
-        particles: [],
-        glassShards: [],
-        spiralSpikes: [],
-        meshTriangles: [],
-        gateOrbs: [],
-        topObstacle: null,
-        shockwaves: [],
-        floatingTexts: [],
-        spiralObstacles: [],
-        spiralAngle: 0,
-        centerProgress: 0,
-        spiralGate: null,
-        totalInitialSpikes: 1,
-        wavePhase: 'drop',
-        clonesRemainingToSpawn: 0,
-        cloneSpawnTimer: 0,
-        waveCooldownTicks: 0,
-        shakeMag: 0
-    };
-
-    const mode = config.mode;
-    trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
-
-    // =====================================================================
-    // MODE 1: SPIKED SPIRAL CENTER
-    // =====================================================================
-    if (mode === 'spiked_spiral') {
+const MODE_INITIALIZERS = {
+    spiked_spiral: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.spiralAngle = 0;
         buildSpikedSpiralTeethAndGate(state, config, maxOuterR);
         spawnSingleTopRightStarterBall(state, config, maxOuterR);
 
-        // =====================================================================
-        // MODE 2: MULTIPLY GATES CENTER (CLEAN ARCHIMEDEAN SPIRAL CORRIDOR)
-        // =====================================================================
-    } else if (mode === 'multiply_gates') {
+    },
+    multiply_gates: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.spiralAngle = 0;
         state.multiplyOuterR = maxOuterR;
 
@@ -198,10 +217,8 @@ function createSimulationState(config, seedOverride) {
         // Spawn 1 bola pertama tepat di mulut corong kanan
         spawnMultiplyGatesStarterBall(state, config, maxOuterR);
 
-        // =====================================================================
-        // MODE 3: BEADED SPIRAL PROGRESS
-        // =====================================================================
-    } else if (mode === 'beaded_spiral') {
+    },
+    beaded_spiral: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.spiralAngle = 0;
         const turns = config.beadSpiralTurns || 4.5;
         const subRows = config.beadSubRows || 3;
@@ -214,7 +231,7 @@ function createSimulationState(config, seedOverride) {
             const rWallOut = innerR + bCoeff * (theta + Math.PI * 2);
             const corridorW = rWallOut - rWallIn;
             const dTheta = Math.max(0.045, Math.min(0.16, 6.2 / Math.max(30, rWallIn + corridorW * 0.5)));
-            if (Math.random() > dTheta / 0.075) continue;
+            if (rng() > dTheta / 0.075) continue;
 
             for (let row = 1; row <= subRows; row++) {
                 const frac = row / (subRows + 1);
@@ -238,10 +255,9 @@ function createSimulationState(config, seedOverride) {
         b.vx = 1.8;
         b.vy = 0.5;
 
-        // =====================================================================
-        // MODE 4: MERGE / FLASK 2048
-        // =====================================================================
-    } else if (mode === 'fusion') {
+    },
+    fusion: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
+        state.escapedCount = 1;
         const flaskR = maxOuterR;
         const neckGap = Math.max(0.22, gapRad);
         state.rings.push({
@@ -276,7 +292,9 @@ function createSimulationState(config, seedOverride) {
             b.inNeck = true;
         }
 
-    } else if (mode === 'accumulation') {
+
+    },
+    accumulation: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: -Math.PI / 2 - gapRad / 2,
@@ -287,7 +305,9 @@ function createSimulationState(config, seedOverride) {
         });
         spawnBall(state, CX + (rng() - 0.5) * 18, CY - 25, baseBallR, 150, rng, false, config);
 
-    } else if (mode === 'classic') {
+
+    },
+    classic: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         const numRings = config.classicRingCount || 24;
         const phase = config.classicPhaseShift !== undefined ? config.classicPhaseShift : 0.14;
         const baseAngle = rng() * Math.PI * 2;
@@ -305,7 +325,9 @@ function createSimulationState(config, seedOverride) {
         }
         spawnBall(state, CX, CY - 8, Math.min(11, baseBallR * 0.65), 32, rng, false, config);
 
-    } else if (mode === 'destruction') {
+
+    },
+    destruction: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         const numRings = config.beadRingLayers || 10;
         const dotR = config.beadDotSize || 3.2;
         for (let rIdx = 0; rIdx < numRings; rIdx++) {
@@ -328,7 +350,9 @@ function createSimulationState(config, seedOverride) {
         }
         spawnBall(state, CX + (rng() - 0.5) * 10, CY - 10, Math.min(11, baseBallR * 0.65), 25, rng, false, config);
 
-    } else if (mode === 'infinite') {
+
+    },
+    infinite: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: -Math.PI / 4,
@@ -339,7 +363,9 @@ function createSimulationState(config, seedOverride) {
         });
         spawnBall(state, CX - 20, CY - 20, Math.min(10, baseBallR * 0.55), 25, rng, false, config);
 
-    } else if (mode === 'web_expansion') {
+
+    },
+    web_expansion: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: rng() * Math.PI * 2,
@@ -351,7 +377,9 @@ function createSimulationState(config, seedOverride) {
         const b = spawnBall(state, CX, CY - 40, baseBallR * 0.85, 0, rng, true, config);
         b.isWhiteStar = true;
 
-    } else if (mode === 'trail_expansion') {
+
+    },
+    trail_expansion: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: rng() * Math.PI * 2,
@@ -362,7 +390,9 @@ function createSimulationState(config, seedOverride) {
         });
         spawnBall(state, CX + (rng() - 0.5) * 16, CY - 30, baseBallR * 0.75, 200, rng, false, config);
 
-    } else if (mode === 'fragment') {
+
+    },
+    fragment: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: rng() * Math.PI * 2,
@@ -376,7 +406,9 @@ function createSimulationState(config, seedOverride) {
             b.veins = true;
         }
 
-    } else if (mode === 'spiral') {
+
+    },
+    spiral: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.spiralAngle = 0;
         const turns = config.spiralTurns || 4.2;
         const maxTheta = turns * Math.PI * 2;
@@ -386,7 +418,9 @@ function createSimulationState(config, seedOverride) {
         }
         spawnBall(state, CX + 5, CY - 5, Math.min(11, baseBallR * 0.65), 310, rng, false, config);
 
-    } else if (mode === 'collision') {
+
+    },
+    collision: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: rng() * Math.PI * 2,
@@ -398,7 +432,9 @@ function createSimulationState(config, seedOverride) {
         spawnBall(state, CX - 60, CY - 20, baseBallR * 1.15, 330, rng, true, config);
         spawnBall(state, CX + 60, CY - 20, baseBallR * 1.15, 190, rng, true, config);
 
-    } else if (mode === 'web_battle') {
+
+    },
+    web_battle: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: 0,
@@ -414,7 +450,9 @@ function createSimulationState(config, seedOverride) {
             b.team = i;
         }
 
-    } else if (mode === 'eating_balls') {
+
+    },
+    eating_balls: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: 0,
@@ -431,7 +469,9 @@ function createSimulationState(config, seedOverride) {
             spawnBall(state, CX + Math.cos(ang) * d, CY + Math.sin(ang) * d, r, (i * 18) % 360, rng, false, config);
         }
 
-    } else if (mode === 'country_royale') {
+
+    },
+    country_royale: (state, { config, maxOuterR, gapRad, baseBallR, rng }) => {
         state.rings.push({
             radius: maxOuterR,
             angle: -Math.PI / 2,
@@ -449,7 +489,84 @@ function createSimulationState(config, seedOverride) {
             b.hp = 100;
             b.maxHp = 100;
         });
+
+    },
+};
+
+// Draft modes reuse starter initializers while retaining distinct settings buckets.
+MODE_INITIALIZERS.lines=MODE_INITIALIZERS.web_expansion;
+MODE_INITIALIZERS.paint=MODE_INITIALIZERS.trail_expansion;
+MODE_INITIALIZERS.target=MODE_INITIALIZERS.multiply_gates;
+MODE_INITIALIZERS.grow=MODE_INITIALIZERS.web_expansion;
+MODE_INITIALIZERS.shatter=MODE_INITIALIZERS.destruction;
+MODE_INITIALIZERS.portal=MODE_INITIALIZERS.multiply_gates;
+
+function createSimulationState(config, seedOverride, preserveTrail = false) {
+    const seed = seedOverride !== undefined ? seedOverride : config.seed;
+    const rng = createPRNG(seed);
+
+    const maxOuterR = config.circleRadiusRef * SCALE_1080;
+    const gapRad = (config.openingSizeDeg * Math.PI) / 180;
+    const baseBallR = Math.max(5, config.ballRadiusRef * SCALE_1080 * 0.72);
+
+    let gStart = config.gradStart;
+    let gEnd = config.gradEnd;
+    let bgCol = config.bgColor;
+
+    if (config.randomColorsEachRound && !['fusion', 'spiked_spiral', 'multiply_gates', 'beaded_spiral', 'target', 'portal'].includes(config.mode)) {
+        const h1 = Math.floor(rng() * 360);
+        const h2 = (h1 + 65 + Math.floor(rng() * 90)) % 360;
+        gStart = hslToHex(h1, 90, 60);
+        gEnd = hslToHex(h2, 90, 58);
+        bgCol = hslToHex(h1, 45, 9);
     }
+
+    const state = {
+        seed,
+        rng,
+        ticks: 0,
+        bounces: 0,
+        ballsLost: 0,
+        escapedCount: 0,
+        escaped: false,
+        goalReachedCount: 0,
+        goalCelebrationTimer: 0,
+        escapeTime: null,
+        winnerText: null,
+        gradStart: gStart,
+        gradEnd: gEnd,
+        bgColor: bgCol,
+        balls: [],
+        rings: [],
+        beads: [],
+        pinnedBalls: [],
+        webLines: [],
+        particles: [],
+        glassShards: [],
+        spiralSpikes: [],
+        meshTriangles: [],
+        gateOrbs: [],
+        topObstacle: null,
+        shockwaves: [],
+        floatingTexts: [],
+        spiralObstacles: [],
+        spiralAngle: 0,
+        centerProgress: 0,
+        spiralGate: null,
+        totalInitialSpikes: 1,
+        wavePhase: 'drop',
+        clonesRemainingToSpawn: 0,
+        cloneSpawnTimer: 0,
+        waveCooldownTicks: 0,
+        shakeMag: 0
+    };
+
+    const mode = config.mode;
+    if (!preserveTrail) trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+
+    const initializeMode = MODE_INITIALIZERS[mode];
+    if (!initializeMode) throw new Error(`No state initializer registered for mode "${mode}"`);
+    initializeMode(state, { config, maxOuterR, gapRad, baseBallR, rng });
 
     return state;
 }
@@ -1023,19 +1140,319 @@ function segmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
         (ccw(x1, y1, x2, y2, x3, y3, x4, y4) !== ccw(x1, y1, x2, y2, x4, y4));
 }
 
+// Mode-specific behavior is registered here so the shared simulation loop can
+// delegate exceptional rules without accumulating another long mode switch.
+const MODE_BEHAVIORS = {
+    spiked_spiral: { exclusiveStep: true, step: stepSpikedSpiralWaveGateMode },
+    multiply_gates: {
+        staticRings: true,
+        ballCollisions: true,
+        beforeStep: (state, config, dt, maxOuterR) => {
+            state.spiralAngle = 0;
+            for (const gate of state.gateOrbs) {
+                if (gate.hitCooldown > 0) gate.hitCooldown--;
+                if (gate.pulseScale > 1) gate.pulseScale = Math.max(1, gate.pulseScale - 0.04 * dt);
+            }
+            if (state.balls.length === 0 && state.ticks % 25 === 0) {
+                spawnMultiplyGatesStarterBall(state, config, maxOuterR);
+            }
+        },
+        ballStep: (state, ball, index, config, minBounceVel, headless) => {
+            handleMultiplyGatesPhysics(state, ball, index, config, minBounceVel, headless);
+            return true;
+        }
+    },
+    accumulation: {
+        onSpikeHit: (state, ball, index, config, headless, ring, spikeH, phi, baseBallR) => {
+            const pinDist = ring.radius - spikeH * 0.55 - ball.r * 0.35;
+            state.pinnedBalls.push({
+                x: CX + Math.cos(phi) * pinDist,
+                y: CY + Math.sin(phi) * pinDist,
+                r: ball.r * 0.92,
+                angle: phi,
+                dist: pinDist,
+                rotSpeed: ring.speed
+            });
+            state.ballsLost++;
+            state.balls.splice(index, 1);
+            if (!headless) {
+                sound.playDeathSFX();
+                spawnBurstParticles(state, ball.x, ball.y, '#94a3b8', 10);
+                addFloatingText(state, ball.x, ball.y, 'IMPALED!', '#94a3b8');
+            }
+            spawnBall(state, CX + (state.rng() - 0.5) * 16, CY - 20, baseBallR, (state.ballsLost * 35 + 140) % 360, state.rng, false, config);
+            return true;
+        }
+    },
+    beaded_spiral: {
+        beforeStep: (state, config, dt) => {
+            if (config.rotationEnabled !== false) state.spiralAngle = (state.spiralAngle - 0.015 * config.rotSpeedMult * dt) % (Math.PI * 2);
+        },
+        ballStep: (state, ball, index, config, minBounceVel, headless) => {
+            handleBeadedSpiralProgressPhysics(state, ball, index, config, minBounceVel, headless);
+            return true;
+        }
+    },
+    spiral: {
+        beforeStep: (state, config, dt) => {
+            if (config.rotationEnabled !== false) state.spiralAngle = (state.spiralAngle + 0.011 * config.rotSpeedMult * dt) % (Math.PI * 2);
+        },
+        ballStep: (state, ball, _index, config, minBounceVel, headless) => {
+            handleSpiralCollision(state, ball, config, minBounceVel, headless);
+            return true;
+        }
+    },
+    destruction: {
+        ballStep: (state, ball, _index, config, minBounceVel, headless) => {
+            handleBeadedDestruction(state, ball, config, minBounceVel, headless);
+            return true;
+        }
+    },
+    fusion: {
+        subSteps: 6,
+        gravityScale: 0.135,
+        maxSpeed: 9.5,
+        ballCollisions: true,
+        allowRingEscape: false,
+        ballMassExponent: 2.6,
+        ballRestitution: (b1, b2, config) => getMergeTierRestitution(Math.min(b1.level || 0, b2.level || 0), config),
+        onBallContact: handleFusionBallContact,
+        allowGapWallCollision: (ball, ring) => ball.r >= ring.radius * Math.sin(ring.gap / 2),
+        ringRestitution: (ball, config) => getMergeTierRestitution(ball.level || 0, config),
+        handleNeckBall: (state, ball, ring) => {
+            const halfGap = ring.gap / 2;
+            const neckHalfW = ring.radius * Math.sin(halfGap);
+            const neckJoinY = CY - ring.radius * Math.cos(halfGap);
+            if (ball.y < neckJoinY && ball.r < neckHalfW) {
+                ball.inNeck = true;
+                const innerWall = neckHalfW - 3;
+                if (ball.x - ball.r < CX - innerWall) {
+                    ball.x = CX - innerWall + ball.r;
+                    ball.vx = Math.abs(ball.vx) * 0.75;
+                }
+                if (ball.x + ball.r > CX + innerWall) {
+                    ball.x = CX + innerWall - ball.r;
+                    ball.vx = -Math.abs(ball.vx) * 0.75;
+                }
+                return true;
+            }
+            if (ball.inNeck) {
+                ball.inNeck = false;
+                if (Math.abs(ball.vx) < 0.35) ball.vx += (state.rng() - 0.5) * 1.9;
+            }
+            return false;
+        },
+        afterRingBounce: (ball, nx, ny, dot, headless) => {
+            const postSpeed = Math.hypot(ball.vx, ball.vy);
+            if ((ball.level || 0) <= 2 && dot > 1.35) {
+                const minTierWallBounce = (3 - (ball.level || 0)) * 1.15;
+                if (postSpeed < minTierWallBounce && postSpeed > 0.1) {
+                    const boost = minTierWallBounce / postSpeed;
+                    ball.vx *= boost;
+                    ball.vy *= boost;
+                }
+            }
+            const tangentVel = -ball.vx * ny + ball.vy * nx;
+            ball.vRot = (tangentVel / Math.max(9, ball.r)) * 0.35;
+            if (!headless && postSpeed > 2.0 && sound.mergeSoundMode === 'meow') sound.playMeowSynth(ball.level, false);
+        },
+        afterBallBounce: (state, b1, b2, nx, ny, relativeSpeed) => {
+            const smallerBall = b1.r <= b2.r ? b1 : b2;
+            if ((smallerBall.level || 0) > 2 || smallerBall.inNeck || Math.abs(relativeSpeed) <= 1.1) return;
+            const sign = smallerBall === b1 ? -1 : 1;
+            const minHop = (3 - (smallerBall.level || 0)) * 0.95;
+            const currentSpeed = Math.hypot(smallerBall.vx, smallerBall.vy);
+            if (currentSpeed < minHop) {
+                smallerBall.vx += sign * nx * (minHop - currentSpeed) * 0.75 + (state.rng() - 0.5) * 0.35;
+                smallerBall.vy += sign * ny * (minHop - currentSpeed) * 0.75;
+            }
+        },
+        beforeStep: (state, config) => {
+            if (state.rings.length === 0) return;
+            const interval = Math.max(16, config.spawnIntervalTicks || 34);
+            if (state.ticks % interval !== 0 || state.balls.length >= 48 || state.escaped) return;
+            const spawnY = 14;
+            const tooClose = state.balls.some(ball => Math.abs(ball.y - spawnY) < ball.r * 2.1 && Math.abs(ball.x - CX) < 28);
+            if (tooClose) return;
+            const ball = spawnMergeBall(state, CX + (state.rng() - 0.5) * 3.0, spawnY, 0, state.rng, config);
+            ball.vx = (state.rng() - 0.5) * 0.65;
+            ball.vy = 2.6;
+            ball.inNeck = true;
+        }
+    },
+    classic: {
+        onEscape: (state, _ball, _index, ring, _config, headless) => {
+            if (!headless) {
+                spawnRingShatterParticles(state, ring.radius, `hsl(${ring.hue}, 95%, 60%)`);
+                sound.playEscapeSFX();
+            }
+            state.rings.shift();
+            if (state.rings.length === 0 && !state.escaped) {
+                state.escaped = true;
+                state.escapeTime = (state.ticks / 60).toFixed(1);
+            }
+        }
+    },
+    infinite: {
+        onEscape: (state, ball, index, _ring, config, headless) => {
+            state.balls.splice(index, 1);
+            const multiplier = config.multiplyFactor || 2;
+            if (state.balls.length < 380) {
+                for (let clone = 0; clone < multiplier; clone++) {
+                    spawnBall(state, CX + (state.rng() - 0.5) * 28, CY - 20, ball.r, (ball.hue + clone * 14) % 360, state.rng, false, config);
+                }
+            }
+            if (!headless) sound.playEscapeSFX();
+            if (state.balls.length >= 260 && !state.escaped) {
+                state.escaped = true;
+                state.escapeTime = (state.ticks / 60).toFixed(1);
+            }
+        }
+    },
+    collision: {
+        ballCollisions: true,
+        onBallImpact: (state, b1, b2, _i, _j, config, headless) => {
+            if (!b1.isBoss || !b2.isBoss) return false;
+            const midX = (b1.x + b2.x) / 2;
+            const midY = (b1.y + b2.y) / 2;
+            const burstCount = config.collisionBurstCount || 24;
+            for (let k = 0; k < burstCount; k++) {
+                if (state.balls.length >= 240) break;
+                const angle = (Math.PI * 2 * k) / burstCount;
+                const speed = 2.2 + state.rng() * 2.5;
+                state.balls.push({
+                    x: midX,
+                    y: midY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    r: 4.5,
+                    hue: (state.ticks * 4 + k * 15) % 360,
+                    isBoss: false
+                });
+            }
+            if (!headless) {
+                sound.playDeathSFX();
+                addFloatingText(state, midX, midY, `BOOM! +${burstCount} BALLS`, '#d4ff33');
+                state.shakeMag = 6;
+            }
+            return false;
+        }
+    },
+    eating_balls: { ballCollisions: true, onBallContact: handleEatingBallContact },
+    country_royale: {
+        ballCollisions: true,
+        onSpikeHit: (state, ball, index, config, headless) => {
+            if (!ball.country) return false;
+            const damage = Math.round((16 + Math.floor(state.rng() * 10)) * (config.royaleDamageMult || 1.0));
+            ball.hp -= damage;
+            if (!headless) {
+                sound.playDeathSFX();
+                addFloatingText(state, ball.x, ball.y - ball.r, `-${damage} SPIKE!`, '#ff2e63');
+                spawnBurstParticles(state, ball.x, ball.y, '#ff2e63', 7);
+            }
+            if (ball.hp > 0) return false;
+            state.ballsLost++;
+            state.balls.splice(index, 1);
+            checkCountryRoyaleWinner(state, headless);
+            return true;
+        },
+        onBallImpact: (state, b1, b2, i, j, config, headless) => {
+            if (!b1.country || !b2.country) return false;
+            const damageMult = config.royaleDamageMult || 1.0;
+            const damage1 = Math.round((7 + Math.floor(state.rng() * 9)) * damageMult);
+            const damage2 = Math.round((7 + Math.floor(state.rng() * 9)) * damageMult);
+            b1.hp -= damage1;
+            b2.hp -= damage2;
+            if (!headless) {
+                sound.triggerNextNote();
+                addFloatingText(state, b1.x, b1.y - b1.r, `-${damage1}`, '#fbbf24');
+            }
+            if (b1.hp <= 0) {
+                state.ballsLost++;
+                if (!headless) sound.playDeathSFX();
+                state.balls.splice(i, 1);
+                checkCountryRoyaleWinner(state, headless);
+                return true;
+            }
+            if (b2.hp <= 0) {
+                state.ballsLost++;
+                if (!headless) sound.playDeathSFX();
+                state.balls.splice(j, 1);
+                checkCountryRoyaleWinner(state, headless);
+                return true;
+            }
+            return false;
+        }
+    },
+    web_expansion: {
+        onWallBounce: (state, ball, x, y, config) => {
+            ball.r = Math.min(ball.r + (config.ballGrowthRate || 0.45), 72);
+            state.webLines.push({ x1: x, y1: y, ballRef: ball, color: 'rgba(255, 255, 255, 0.72)', team: 0 });
+            if (state.webLines.length > 260) state.webLines.shift();
+        }
+    },
+    trail_expansion: {
+        onWallBounce: (_state, ball, _x, _y, config) => {
+            ball.r = Math.min(ball.r + (config.ballGrowthRate || 0.45), 92);
+        },
+        beforeBallStep: (state, ball, _index, config, headless, subStep, previousX, previousY) => {
+            if (headless || subStep !== 0) return;
+            ball.hue = (ball.hue + 1.3) % 360;
+            drawSingleBallVisual(trailCtx, ball, state, config, true);
+        }
+    },
+    fragment: {
+        ballCollisions: true,
+        onSpikeHit: (state, ball, index, config, headless) => {
+            if (!ball.isBoss || ball.r < 13) return false;
+            shatterBallIntoFragments(state, ball, index, config, headless);
+            return true;
+        },
+        onWallBounce: (_state, ball) => {
+            ball.r = Math.min(ball.r + 0.55, 52);
+            if (ball.r >= 18) { ball.isBoss = true; ball.veins = true; }
+        }
+    },
+    web_battle: {
+        ballCollisions: true,
+        beforeBallStep: (state, ball, _index, _config, _headless, subStep, previousX, previousY) => {
+            if (subStep !== 0) return;
+            for (const line of state.webLines) {
+                if (line.team !== ball.team && segmentsIntersect(previousX, previousY, ball.x, ball.y, line.x1, line.y1, ball.x, ball.y)) {
+                    line.team = ball.team;
+                    line.color = ball.country ? ball.country.colors[0] : state.gradStart;
+                }
+            }
+        },
+        onWallBounce: (state, ball, x, y) => {
+            state.webLines.push({ x1: x, y1: y, ballRef: ball, color: ball.country ? ball.country.colors[0] : state.gradStart, team: ball.team });
+            if (state.webLines.length > 220) state.webLines.shift();
+        }
+    }
+};
+
+// Draft modes reuse starter behavior while retaining distinct mode settings.
+MODE_BEHAVIORS.lines=MODE_BEHAVIORS.web_expansion;
+MODE_BEHAVIORS.paint=MODE_BEHAVIORS.trail_expansion;
+MODE_BEHAVIORS.target=MODE_BEHAVIORS.multiply_gates;
+MODE_BEHAVIORS.grow={onWallBounce:(_state,ball,_x,_y,config)=>{ball.r=Math.min(ball.r+(config.ballGrowthRate||0.45),92)}};
+MODE_BEHAVIORS.shatter=MODE_BEHAVIORS.destruction;
+MODE_BEHAVIORS.portal=MODE_BEHAVIORS.multiply_gates;
+
 /*************************************************************************
- * 2. PHYSICS STEP UPDATE (ALL 16 MODES)
+ * 2. PHYSICS STEP UPDATE (ALL 22 MODES)
  *************************************************************************/
 function stepPhysics(state, config, headless = false) {
     state.ticks++;
     const mode = config.mode;
+    const behavior = MODE_BEHAVIORS[mode] || {};
     const dt = 0.85;
-    const subSteps = mode === 'fusion' ? 6 : 4;
+    const subSteps = behavior.subSteps || 4;
     const stepDt = dt / subSteps;
 
-    const gScaled = config.gravityRef * (mode === 'fusion' ? 0.135 : 0.14);
+    const gScaled = config.gravityRef * (behavior.gravityScale || 0.14);
     const minBounceVel = config.minBounceSpeedRef * 0.72;
-    const maxSpeedCap = mode === 'fusion' ? 9.5 : Math.max(6.4, minBounceVel * 1.65);
+    const maxSpeedCap = behavior.maxSpeed || Math.max(6.4, minBounceVel * 1.65);
     const baseBallR = Math.max(6, config.ballRadiusRef * SCALE_1080 * 0.72);
     const spikeH = config.spikeHeightRef * SCALE_1080 * 0.45;
     const maxOuterR = config.circleRadiusRef * SCALE_1080;
@@ -1050,50 +1467,23 @@ function stepPhysics(state, config, headless = false) {
         state.goalCelebrationTimer--;
     }
 
-    if (mode === 'spiked_spiral') {
-        stepSpikedSpiralWaveGateMode(state, config, dt, maxOuterR, headless);
+    if (behavior.exclusiveStep) {
+        behavior.step(state, config, dt, maxOuterR, headless);
     } else {
-        if (mode === 'multiply_gates') {
-            state.spiralAngle = 0;
-            for (const g of state.gateOrbs) {
-                if (g.hitCooldown > 0) g.hitCooldown--;
-                if (g.pulseScale > 1) g.pulseScale = Math.max(1, g.pulseScale - 0.04 * dt);
-            }
-            if (state.balls.length === 0 && state.ticks % 25 === 0) {
-                spawnMultiplyGatesStarterBall(state, config, maxOuterR);
-            }
-        } else if (mode === 'beaded_spiral') {
-            state.spiralAngle = (state.spiralAngle - 0.015 * config.rotSpeedMult * dt) % (Math.PI * 2);
-        } else if (mode === 'spiral') {
-            state.spiralAngle = (state.spiralAngle + 0.011 * config.rotSpeedMult * dt) % (Math.PI * 2);
-        }
-
-        if (mode === 'fusion' && state.rings.length > 0) {
-            const interval = Math.max(16, config.spawnIntervalTicks || 34);
-            if (state.ticks % interval === 0 && state.balls.length < 48 && !state.escaped) {
-                const spawnY = 14;
-                const tooClose = state.balls.some(b => Math.abs(b.y - spawnY) < b.r * 2.1 && Math.abs(b.x - CX) < 28);
-                if (!tooClose) {
-                    const b = spawnMergeBall(state, CX + (state.rng() - 0.5) * 3.0, spawnY, 0, state.rng, config);
-                    b.vx = (state.rng() - 0.5) * 0.65;
-                    b.vy = 2.6;
-                    b.inNeck = true;
-                }
-            }
-        }
+        if (behavior.beforeStep) behavior.beforeStep(state, config, dt, maxOuterR, headless);
 
         for (const ring of state.rings) {
-            if (mode !== 'multiply_gates') {
+            if (!behavior.staticRings && config.rotationEnabled !== false) {
                 ring.angle = (ring.angle + ring.speed * dt) % (Math.PI * 2);
             }
         }
         for (const pb of state.pinnedBalls) {
-            pb.angle += pb.rotSpeed * dt;
+            if (config.rotationEnabled !== false) pb.angle += pb.rotSpeed * dt;
             pb.x = CX + Math.cos(pb.angle) * pb.dist;
             pb.y = CY + Math.sin(pb.angle) * pb.dist;
         }
         for (const bead of state.beads) {
-            if (bead.alive && !bead.isSpiralBead) {
+            if (bead.alive && !bead.isSpiralBead && config.rotationEnabled !== false) {
                 bead.angle = (bead.angle + bead.speed * dt) % (Math.PI * 2);
             }
         }
@@ -1112,7 +1502,7 @@ function stepPhysics(state, config, headless = false) {
 
                 b.vy += gScaled * stepDt;
 
-                if (mode === 'fusion') {
+                if (behavior.gravityScale) {
                     const isLargeTier = (b.level || 0) >= 4;
                     const airDrag = isLargeTier ? 0.9965 : 0.9996;
                     b.vx *= Math.pow(airDrag, stepDt);
@@ -1130,66 +1520,11 @@ function stepPhysics(state, config, headless = false) {
                     b.vy *= scale;
                 }
 
-                if (!headless && mode === 'trail_expansion' && s === 0) {
-                    b.hue = (b.hue + 1.3) % 360;
-                    drawSingleBallVisual(trailCtx, b, state, config, true);
-                }
+                if (behavior.beforeBallStep) behavior.beforeBallStep(state, b, bIdx, config, headless, s, prevX, prevY);
 
-                if (mode === 'web_battle' && s === 0) {
-                    for (const line of state.webLines) {
-                        if (line.team !== b.team && segmentsIntersect(prevX, prevY, b.x, b.y, line.x1, line.y1, b.x, b.y)) {
-                            line.team = b.team;
-                            line.color = b.country ? b.country.colors[0] : state.gradStart;
-                        }
-                    }
-                }
+                if (behavior.ballStep && behavior.ballStep(state, b, bIdx, config, minBounceVel, headless)) continue;
 
-                if (mode === 'multiply_gates') {
-                    handleMultiplyGatesPhysics(state, b, bIdx, config, minBounceVel, headless);
-                    continue;
-                }
-
-                if (mode === 'beaded_spiral') {
-                    handleBeadedSpiralProgressPhysics(state, b, bIdx, config, minBounceVel, headless);
-                    continue;
-                }
-
-                if (mode === 'spiral') {
-                    handleSpiralCollision(state, b, config, minBounceVel, headless);
-                    continue;
-                }
-
-                if (mode === 'destruction') {
-                    handleBeadedDestruction(state, b, config, minBounceVel, headless);
-                    continue;
-                }
-
-                if (mode === 'fusion' && state.rings.length > 0) {
-                    const ring = state.rings[0];
-                    const R = ring.radius;
-                    const halfGap = ring.gap / 2;
-                    const neckHalfW = R * Math.sin(halfGap);
-                    const neckJoinY = CY - R * Math.cos(halfGap);
-
-                    if (b.y < neckJoinY && b.r < neckHalfW) {
-                        b.inNeck = true;
-                        const innerWall = neckHalfW - 3;
-                        if (b.x - b.r < CX - innerWall) {
-                            b.x = CX - innerWall + b.r;
-                            b.vx = Math.abs(b.vx) * 0.75;
-                        }
-                        if (b.x + b.r > CX + innerWall) {
-                            b.x = CX + innerWall - b.r;
-                            b.vx = -Math.abs(b.vx) * 0.75;
-                        }
-                        continue;
-                    } else if (b.inNeck) {
-                        b.inNeck = false;
-                        if (Math.abs(b.vx) < 0.35) {
-                            b.vx += (state.rng() - 0.5) * 1.9;
-                        }
-                    }
-                }
+                if (behavior.handleNeckBall && state.rings.length > 0 && behavior.handleNeckBall(state, b, state.rings[0])) continue;
 
                 let bouncedOffPinned = false;
                 if (state.pinnedBalls.length > 0) {
@@ -1228,52 +1563,19 @@ function stepPhysics(state, config, headless = false) {
 
                     if (dist + b.r >= triggerRadius) {
                         if (activeRing.gap > 0 && isAngleInArc(phi, activeRing.angle, activeRing.gap)) {
-                            if (mode !== 'fusion' && dist - b.r > activeRing.radius + 6) {
+                            if (behavior.allowRingEscape !== false && dist - b.r > activeRing.radius + 6) {
                                 onBallEscapeRing(state, b, bIdx, activeRing, config, headless);
                                 break;
                             }
-                        } else if (hittingSpikeAngle) {
-                            if (mode === 'accumulation') {
-                                const pinDist = activeRing.radius - spikeH * 0.55 - b.r * 0.35;
-                                state.pinnedBalls.push({
-                                    x: CX + Math.cos(phi) * pinDist,
-                                    y: CY + Math.sin(phi) * pinDist,
-                                    r: b.r * 0.92,
-                                    angle: phi,
-                                    dist: pinDist,
-                                    rotSpeed: activeRing.speed
-                                });
-                                state.ballsLost++;
-                                state.balls.splice(bIdx, 1);
-                                if (!headless) {
-                                    sound.playDeathSFX();
-                                    spawnBurstParticles(state, b.x, b.y, '#94a3b8', 10);
-                                    addFloatingText(state, b.x, b.y, 'IMPALED!', '#94a3b8');
-                                }
-                                spawnBall(state, CX + (state.rng() - 0.5) * 16, CY - 20, baseBallR, (state.ballsLost * 35 + 140) % 360, state.rng, false, config);
-                                break;
-                            } else if (mode === 'fragment' && b.isBoss && b.r >= 13) {
-                                shatterBallIntoFragments(state, b, bIdx, config, headless);
-                                break;
-                            } else if (mode === 'country_royale' && b.country) {
-                                const dmg = Math.round((16 + Math.floor(state.rng() * 10)) * (config.royaleDamageMult || 1.0));
-                                b.hp -= dmg;
-                                if (!headless) {
-                                    sound.playDeathSFX();
-                                    addFloatingText(state, b.x, b.y - b.r, `-${dmg} SPIKE!`, '#ff2e63');
-                                    spawnBurstParticles(state, b.x, b.y, '#ff2e63', 7);
-                                }
-                                if (b.hp <= 0) {
-                                    state.ballsLost++;
-                                    state.balls.splice(bIdx, 1);
-                                    checkCountryRoyaleWinner(state, headless);
-                                    break;
-                                }
-                            }
+                        } else if (hittingSpikeAngle && behavior.onSpikeHit && behavior.onSpikeHit(state, b, bIdx, config, headless, activeRing, spikeH, phi, baseBallR)) {
+                            break;
                         }
 
                         const inNeckOpening = activeRing.gap > 0 && isAngleInArc(phi, activeRing.angle, activeRing.gap);
-                        if ((!inNeckOpening || (mode === 'fusion' && b.r >= activeRing.radius * Math.sin(activeRing.gap / 2))) && dist + b.r >= activeRing.radius) {
+                        const canBounceThroughGap = behavior.allowGapWallCollision
+                            ? behavior.allowGapWallCollision(b, activeRing)
+                            : false;
+                        if ((!inNeckOpening || canBounceThroughGap) && dist + b.r >= activeRing.radius) {
                             const nx = dx / (dist || 1);
                             const ny = dy / (dist || 1);
                             const overlap = (dist + b.r) - activeRing.radius;
@@ -1282,26 +1584,14 @@ function stepPhysics(state, config, headless = false) {
 
                             const dot = b.vx * nx + b.vy * ny;
                             if (dot > 0) {
-                                const restitution = mode === 'fusion' ? getMergeTierRestitution(b.level || 0, config) : 1.004;
+                                const restitution = behavior.ringRestitution
+                                    ? behavior.ringRestitution(b, config)
+                                    : 1.004;
                                 b.vx = (b.vx - (1 + restitution) * dot * nx);
                                 b.vy = (b.vy - (1 + restitution) * dot * ny);
 
-                                if (mode === 'fusion') {
-                                    const postSpd = Math.hypot(b.vx, b.vy);
-                                    if ((b.level || 0) <= 2 && dot > 1.35) {
-                                        const minTierWallBounce = (3 - (b.level || 0)) * 1.15;
-                                        if (postSpd < minTierWallBounce && postSpd > 0.1) {
-                                            const boost = minTierWallBounce / postSpd;
-                                            b.vx *= boost;
-                                            b.vy *= boost;
-                                        }
-                                    }
-
-                                    const tangentVel = -b.vx * ny + b.vy * nx;
-                                    b.vRot = (tangentVel / Math.max(9, b.r)) * 0.35;
-                                    if (!headless && postSpd > 2.0 && sound.mergeSoundMode === 'meow') {
-                                        sound.playMeowSynth(b.level, false);
-                                    }
+                                if (behavior.afterRingBounce) {
+                                    behavior.afterRingBounce(b, nx, ny, dot, headless);
                                 } else {
                                     b.vx += -ny * activeRing.speed * 15;
                                     b.vy += nx * activeRing.speed * 15;
@@ -1319,7 +1609,7 @@ function stepPhysics(state, config, headless = false) {
                 }
             }
 
-            if (['multiply_gates', 'country_royale', 'collision', 'fusion', 'web_battle', 'eating_balls', 'fragment'].includes(mode)) {
+            if (behavior.ballCollisions) {
                 handleBallToBallCollisions(state, config, minBounceVel, headless);
             }
         }
@@ -1357,6 +1647,9 @@ function stepPhysics(state, config, headless = false) {
             if (ft.life <= 0) state.floatingTexts.splice(i, 1);
         }
         state.shakeMag *= 0.85;
+        if (config.colorTrails && mode !== 'trail_expansion') {
+            for (const ball of state.balls) drawSingleBallVisual(trailCtx, ball, state, config, true);
+        }
     }
 }
 
@@ -1373,7 +1666,7 @@ function stepSpikedSpiralWaveGateMode(state, config, dt, maxOuterR, headless) {
     const ballR = Math.min(13.5, Math.max(8, config.ballRadiusRef * SCALE_1080 * 0.50));
     const gate = state.spiralGate;
 
-    if (config.rotSpeedMult > 0) {
+    if (config.rotationEnabled !== false && config.rotSpeedMult > 0) {
         state.spiralAngle = (state.spiralAngle + 0.004 * config.rotSpeedMult * dt) % (Math.PI * 2);
     } else {
         state.spiralAngle = 0;
@@ -1834,22 +2127,8 @@ function handleBeadedSpiralProgressPhysics(state, b, bIdx, config, minBounceVel,
  *************************************************************************/
 function onWallBounce(state, b, hitX, hitY, config, headless) {
     state.bounces++;
-    const mode = config.mode;
-    const growth = config.ballGrowthRate || 0.45;
-
-    if (mode === 'web_expansion') {
-        b.r = Math.min(b.r + growth, 72);
-        state.webLines.push({ x1: hitX, y1: hitY, ballRef: b, color: 'rgba(255, 255, 255, 0.72)', team: 0 });
-        if (state.webLines.length > 260) state.webLines.shift();
-    } else if (mode === 'trail_expansion') {
-        b.r = Math.min(b.r + growth, 92);
-    } else if (mode === 'fragment') {
-        b.r = Math.min(b.r + 0.55, 52);
-        if (b.r >= 18) { b.isBoss = true; b.veins = true; }
-    } else if (mode === 'web_battle') {
-        state.webLines.push({ x1: hitX, y1: hitY, ballRef: b, color: b.country ? b.country.colors[0] : state.gradStart, team: b.team });
-        if (state.webLines.length > 220) state.webLines.shift();
-    }
+    const onModeBounce = MODE_BEHAVIORS[config.mode]?.onWallBounce;
+    if (onModeBounce) onModeBounce(state, b, hitX, hitY, config, headless);
 
     if (!headless) {
         sound.triggerNextNote();
@@ -1858,41 +2137,16 @@ function onWallBounce(state, b, hitX, hitY, config, headless) {
 }
 
 function onBallEscapeRing(state, b, bIdx, ring, config, headless) {
-    const mode = config.mode;
     state.escapedCount++;
-
-    if (mode === 'classic') {
-        if (!headless) {
-            spawnRingShatterParticles(state, ring.radius, `hsl(${ring.hue}, 95%, 60%)`);
-            sound.playEscapeSFX();
-        }
-        state.rings.shift();
-        if (state.rings.length === 0 && !state.escaped) {
-            state.escaped = true;
-            state.escapeTime = (state.ticks / 60).toFixed(1);
-        }
-    } else if (mode === 'infinite') {
-        state.balls.splice(bIdx, 1);
-        const mult = config.multiplyFactor || 2;
-        if (state.balls.length < 380) {
-            for (let c = 0; c < mult; c++) {
-                spawnBall(state, CX + (state.rng() - 0.5) * 28, CY - 20, b.r, (b.hue + c * 14) % 360, state.rng, false, config);
-            }
-        }
-        if (!headless) sound.playEscapeSFX();
-        if (state.balls.length >= 260 && !state.escaped) {
-            state.escaped = true;
-            state.escapeTime = (state.ticks / 60).toFixed(1);
-        }
-    } else {
-        if (!headless) {
-            spawnRingShatterParticles(state, ring.radius, state.gradStart);
-            sound.playEscapeSFX();
-            addFloatingText(state, b.x, b.y, 'ESCAPED! 🎉', '#d4ff33');
-        }
-        state.escaped = true;
-        state.escapeTime = (state.ticks / 60).toFixed(1);
+    const onModeEscape = MODE_BEHAVIORS[config.mode]?.onEscape;
+    if (onModeEscape) return onModeEscape(state, b, bIdx, ring, config, headless);
+    if (!headless) {
+        spawnRingShatterParticles(state, ring.radius, state.gradStart);
+        sound.playEscapeSFX();
+        addFloatingText(state, b.x, b.y, 'ESCAPED! 🎉', '#d4ff33');
     }
+    state.escaped = true;
+    state.escapeTime = (state.ticks / 60).toFixed(1);
 }
 
 function handleBeadedDestruction(state, b, config, minBounceVel, headless) {
@@ -2004,9 +2258,79 @@ function handleSpiralCollision(state, b, config, minBounceVel, headless) {
     }
 }
 
+function handleFusionBallContact(state, b1, b2, i, j, config, headless) {
+    if (!(b1.level === b2.level && b1.level < activeMergeTiers.length - 1) ||
+        (b1.mergeCooldown || 0) > 0 || (b2.mergeCooldown || 0) > 0) return false;
+
+    const balls = state.balls;
+    const mergeX = (b1.x + b2.x) * 0.5;
+    const mergeY = (b1.y + b2.y) * 0.5;
+    const nextLevel = b1.level + 1;
+    const popUpward = Math.max(0.4, (6 - nextLevel) * 0.42);
+    const avgVx = (b1.vx + b2.vx) * 0.55 + (state.rng() - 0.5) * 0.8;
+    const avgVy = Math.min(0.6, (b1.vy + b2.vy) * 0.4) - popUpward;
+
+    balls.splice(i, 1);
+    balls.splice(j, 1);
+
+    const merged = spawnMergeBall(state, mergeX, mergeY, nextLevel, state.rng, config);
+    merged.vx = avgVx;
+    merged.vy = avgVy;
+    state.ballsLost++;
+    state.bounces++;
+
+    for (const other of balls) {
+        if (other === merged) continue;
+        const dx = other.x - merged.x;
+        const dy = other.y - merged.y;
+        const distance = Math.hypot(dx, dy);
+        const pushRadius = merged.r * 2.5;
+        if (distance < pushRadius && distance > 0.1) {
+            const sizeFactor = Math.max(0.25, 1.5 - (other.level || 0) * 0.22);
+            const push = ((pushRadius - distance) / pushRadius) * 2.1 * sizeFactor;
+            other.vx += (dx / distance) * push;
+            other.vy += (dy / distance) * push - 0.35 * sizeFactor;
+        }
+    }
+
+    if (!headless) {
+        spawnMergeShockwave(state, merged.x, merged.y, merged.r);
+        sound.playMergePopSFX(nextLevel);
+        addFloatingText(state, merged.x, merged.y - merged.r, `TIER ${nextLevel + 1}!`, '#d4ff33');
+    }
+
+    if (nextLevel === activeMergeTiers.length - 1 && !state.escaped) {
+        state.escaped = true;
+        state.winnerText = 'FINAL FORM MERGED! 🏆';
+        state.escapeTime = (state.ticks / 60).toFixed(1);
+        if (!headless) sound.playEscapeSFX();
+    }
+    return true;
+}
+
+function handleEatingBallContact(state, b1, b2, i, j, _config, headless) {
+    const eater = b1.r >= b2.r ? b1 : b2;
+    const preyIndex = b1.r >= b2.r ? j : i;
+    const prey = state.balls[preyIndex];
+    eater.r = Math.min(85, Math.hypot(eater.r, prey.r * 0.65));
+    state.balls.splice(preyIndex, 1);
+    state.ballsLost++;
+    if (!headless) {
+        sound.triggerNextNote();
+        addFloatingText(state, eater.x, eater.y, 'NOM! +SIZE', '#34d399');
+    }
+    if (state.balls.length === 1 && !state.escaped) {
+        state.escaped = true;
+        state.escapeTime = (state.ticks / 60).toFixed(1);
+        if (!headless) sound.playEscapeSFX();
+    }
+    return true;
+}
+
 function handleBallToBallCollisions(state, config, minBounceVel, headless) {
     const balls = state.balls;
     const mode = config.mode;
+    const behavior = MODE_BEHAVIORS[mode] || {};
 
     for (let i = balls.length - 1; i >= 0; i--) {
         for (let j = i - 1; j >= 0; j--) {
@@ -2019,80 +2343,15 @@ function handleBallToBallCollisions(state, config, minBounceVel, headless) {
             const minDist = b1.r + b2.r;
 
             if (dist < minDist && dist > 0.0001) {
-                if (mode === 'fusion' && b1.level === b2.level && b1.level < activeMergeTiers.length - 1) {
-                    if ((b1.mergeCooldown || 0) <= 0 && (b2.mergeCooldown || 0) <= 0) {
-                        const mx = (b1.x + b2.x) * 0.5;
-                        const my = (b1.y + b2.y) * 0.5;
-                        const nextLvl = b1.level + 1;
-
-                        const popUpward = Math.max(0.4, (6 - nextLvl) * 0.42);
-                        const avgVx = (b1.vx + b2.vx) * 0.55 + (state.rng() - 0.5) * 0.8;
-                        const avgVy = Math.min(0.6, (b1.vy + b2.vy) * 0.4) - popUpward;
-
-                        balls.splice(i, 1);
-                        balls.splice(j, 1);
-
-                        const merged = spawnMergeBall(state, mx, my, nextLvl, state.rng, config);
-                        merged.vx = avgVx;
-                        merged.vy = avgVy;
-                        state.ballsLost++;
-                        state.bounces++;
-
-                        for (const other of balls) {
-                            if (other === merged) continue;
-                            const odx = other.x - merged.x;
-                            const ody = other.y - merged.y;
-                            const od = Math.hypot(odx, ody);
-                            const pushRadius = merged.r * 2.5;
-                            if (od < pushRadius && od > 0.1) {
-                                const sizeFactor = Math.max(0.25, 1.5 - (other.level || 0) * 0.22);
-                                const push = ((pushRadius - od) / pushRadius) * 2.1 * sizeFactor;
-                                other.vx += (odx / od) * push;
-                                other.vy += (ody / od) * push - 0.35 * sizeFactor;
-                            }
-                        }
-
-                        if (!headless) {
-                            spawnMergeShockwave(state, merged.x, merged.y, merged.r);
-                            sound.playMergePopSFX(nextLvl);
-                            addFloatingText(state, merged.x, merged.y - merged.r, `TIER ${nextLvl + 1}!`, '#d4ff33');
-                        }
-
-                        if (nextLvl === activeMergeTiers.length - 1 && !state.escaped) {
-                            state.escaped = true;
-                            state.winnerText = 'FINAL FORM MERGED! 🏆';
-                            state.escapeTime = (state.ticks / 60).toFixed(1);
-                            if (!headless) sound.playEscapeSFX();
-                        }
-                        return;
-                    }
-                }
-
-                if (mode === 'eating_balls') {
-                    const eater = b1.r >= b2.r ? b1 : b2;
-                    const preyIdx = b1.r >= b2.r ? j : i;
-                    const prey = balls[preyIdx];
-                    eater.r = Math.min(85, Math.hypot(eater.r, prey.r * 0.65));
-                    balls.splice(preyIdx, 1);
-                    state.ballsLost++;
-                    if (!headless) {
-                        sound.triggerNextNote();
-                        addFloatingText(state, eater.x, eater.y, 'NOM! +SIZE', '#34d399');
-                    }
-                    if (balls.length === 1 && !state.escaped) {
-                        state.escaped = true;
-                        state.escapeTime = (state.ticks / 60).toFixed(1);
-                        if (!headless) sound.playEscapeSFX();
-                    }
-                    return;
-                }
+                if (behavior.onBallContact && behavior.onBallContact(state, b1, b2, i, j, config, headless)) return;
 
                 const nx = dx / dist;
                 const ny = dy / dist;
                 const overlap = minDist - dist;
 
-                const m1 = mode === 'fusion' ? Math.pow(b1.r, 2.6) : (b1.r * b1.r);
-                const m2 = mode === 'fusion' ? Math.pow(b2.r, 2.6) : (b2.r * b2.r);
+                const massExponent = behavior.ballMassExponent || 2;
+                const m1 = Math.pow(b1.r, massExponent);
+                const m2 = Math.pow(b2.r, massExponent);
                 const totalM = m1 + m2;
                 const ratio1 = m2 / totalM;
                 const ratio2 = m1 / totalM;
@@ -2108,10 +2367,7 @@ function handleBallToBallCollisions(state, config, minBounceVel, headless) {
 
                 if (velAlongNormal < 0) {
                     let restitution = 0.92;
-                    if (mode === 'fusion') {
-                        const minLevel = Math.min(b1.level || 0, b2.level || 0);
-                        restitution = getMergeTierRestitution(minLevel, config);
-                    }
+                    if (behavior.ballRestitution) restitution = behavior.ballRestitution(b1, b2, config);
 
                     const jImpulse = -(1 + restitution) * velAlongNormal / (1 / m1 + 1 / m2);
                     const ix = jImpulse * nx;
@@ -2122,70 +2378,10 @@ function handleBallToBallCollisions(state, config, minBounceVel, headless) {
                     b2.vx += ix / m2;
                     b2.vy += iy / m2;
 
-                    if (mode === 'fusion') {
-                        const smallerBall = b1.r <= b2.r ? b1 : b2;
-                        if ((smallerBall.level || 0) <= 2 && !smallerBall.inNeck && Math.abs(velAlongNormal) > 1.1) {
-                            const sign = smallerBall === b1 ? -1 : 1;
-                            const minHop = (3 - (smallerBall.level || 0)) * 0.95;
-                            const curSpd = Math.hypot(smallerBall.vx, smallerBall.vy);
-                            if (curSpd < minHop) {
-                                smallerBall.vx += sign * nx * (minHop - curSpd) * 0.75 + (state.rng() - 0.5) * 0.35;
-                                smallerBall.vy += sign * ny * (minHop - curSpd) * 0.75;
-                            }
-                        }
-                    }
+                    if (behavior.afterBallBounce) behavior.afterBallBounce(state, b1, b2, nx, ny, velAlongNormal);
                 }
 
-                if (mode === 'country_royale' && b1.country && b2.country) {
-                    const dmgMult = config.royaleDamageMult || 1.0;
-                    const dmg1 = Math.round((7 + Math.floor(state.rng() * 9)) * dmgMult);
-                    const dmg2 = Math.round((7 + Math.floor(state.rng() * 9)) * dmgMult);
-                    b1.hp -= dmg1;
-                    b2.hp -= dmg2;
-                    if (!headless) {
-                        sound.triggerNextNote();
-                        addFloatingText(state, b1.x, b1.y - b1.r, `-${dmg1}`, '#fbbf24');
-                    }
-                    if (b1.hp <= 0) {
-                        state.ballsLost++;
-                        if (!headless) sound.playDeathSFX();
-                        balls.splice(i, 1);
-                        checkCountryRoyaleWinner(state, headless);
-                        break;
-                    }
-                    if (b2.hp <= 0) {
-                        state.ballsLost++;
-                        if (!headless) sound.playDeathSFX();
-                        balls.splice(j, 1);
-                        checkCountryRoyaleWinner(state, headless);
-                        break;
-                    }
-                }
-
-                if (mode === 'collision' && b1.isBoss && b2.isBoss) {
-                    const mx = (b1.x + b2.x) / 2;
-                    const my = (b1.y + b2.y) / 2;
-                    const burstCount = config.collisionBurstCount || 24;
-                    for (let k = 0; k < burstCount; k++) {
-                        if (state.balls.length >= 240) break;
-                        const ang = (Math.PI * 2 * k) / burstCount;
-                        const spd = 2.2 + state.rng() * 2.5;
-                        state.balls.push({
-                            x: mx,
-                            y: my,
-                            vx: Math.cos(ang) * spd,
-                            vy: Math.sin(ang) * spd,
-                            r: 4.5,
-                            hue: (state.ticks * 4 + k * 15) % 360,
-                            isBoss: false
-                        });
-                    }
-                    if (!headless) {
-                        sound.playDeathSFX();
-                        addFloatingText(state, mx, my, `BOOM! +${burstCount} BALLS`, '#d4ff33');
-                        state.shakeMag = 6;
-                    }
-                }
+                if (behavior.onBallImpact && behavior.onBallImpact(state, b1, b2, i, j, config, headless)) break;
             }
         }
     }

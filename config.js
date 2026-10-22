@@ -1,7 +1,7 @@
 /*************************************************************************
  * FILE 2: config.js
  * Berisi PRNG, Avatar & Cat Cutout Generators, Merge Tiers, Country Packs,
- * 16 Master Game Modes (termasuk 3 Mode Spiral Center Baru), dan Katalog Audio
+ * 22 Master Game Modes (termasuk 3 Mode Spiral Center Baru), dan Katalog Audio
  *************************************************************************/
 
 // 1. DETERMINISTIC PRNG (MULBERRY32) & COLOR UTILITIES
@@ -276,7 +276,7 @@ const COUNTRY_PACKS = {
     ]
 };
 
-// 5. 16 MASTER REFERENCE GAME MODES (INCLUDING 3 NEW SPIRAL CENTER MODES!)
+// 5. 22 MASTER REFERENCE GAME MODES (INCLUDING 3 NEW SPIRAL CENTER MODES!)
 const GAME_MODES = [
     {
         id: 'spiked_spiral',
@@ -326,6 +326,7 @@ const GAME_MODES = [
         hasRotation: false,
         specificGroup: 'ctrlGroupMerge',
         specificHeader: '🧪 FLASK MERGE MECHANICS',
+        leftPanelCard: 'leftCardMergeTiers',
         defaultHookTop: 'Will the Ball Merge Into Final Form?',
         defaultHookBot: '',
         preset: { circleRadius: 430, outlineThickness: 10, openingSize: 21, spikeHeight: 0, spikeWidth: 84, ballRadius: 100, gravity: 0.76, minBounce: 0.84, initSpeedX: 2.2, rotSpeed: 0.0, spikeCov: 'full', spikeStyle: 'hollow' }
@@ -485,7 +486,14 @@ const GAME_MODES = [
         defaultHookTop: 'COMMENT YOUR COUNTRY BEFORE IT DIES! 🏳️',
         defaultHookBot: '',
         preset: { circleRadius: 450, outlineThickness: 14, openingSize: 0, spikeHeight: 52, spikeWidth: 80, ballRadius: 36, gravity: 0.70, minBounce: 4.5, initSpeedX: 4.5, rotSpeed: 0.55, spikeCov: 'bottom', spikeStyle: 'crimson' }
-    }
+    },
+    { id:"lines", name:"Lines (Draft)", subtitle:"Separate scaffold; currently starts from Web Expansion line behavior.", hasSpikes:false, hasOpening:true, hasRotation:true, specificGroup:"ctrlGroupGrowth", specificHeader:"LINES MODE - DRAFT", defaultHookTop:"WATCH THE LINES FORM!", defaultHookBot:"", preset:{circleRadius:450,outlineThickness:12,openingSize:18,spikeHeight:0,spikeWidth:84,ballRadius:32,gravity:0.76,minBounce:4.6,initSpeedX:4.5,rotSpeed:0.55,spikeCov:"full",spikeStyle:"hollow"} },
+    { id:"paint", name:"Paint (Draft)", subtitle:"Separate scaffold; currently starts from Trail Expansion behavior.", hasSpikes:false, hasOpening:true, hasRotation:true, specificGroup:"ctrlGroupGrowth", specificHeader:"PAINT MODE - DRAFT", defaultHookTop:"PAINT THE ARENA!", defaultHookBot:"", preset:{circleRadius:450,outlineThickness:14,openingSize:18,spikeHeight:0,spikeWidth:84,ballRadius:28,gravity:0.79,minBounce:4.5,initSpeedX:4.5,rotSpeed:0.60,spikeCov:"full",spikeStyle:"hollow"} },
+    { id:"target", name:"Target (Draft)", subtitle:"Separate scaffold; currently starts from Multiply Gates behavior.", hasSpikes:true, hasOpening:true, hasRotation:false, specificGroup:"ctrlGroupMultiplyGates", specificHeader:"TARGET MODE - DRAFT", defaultHookTop:"CAN THE BALL HIT THE TARGET?", defaultHookBot:"", preset:{circleRadius:460,outlineThickness:8,openingSize:35,spikeHeight:32,spikeWidth:46,ballRadius:22,gravity:0.68,minBounce:4.3,initSpeedX:4.0,rotSpeed:0,spikeCov:"right_arc",spikeStyle:"rainbow"} },
+    { id:"grow", name:"Grow (Draft)", subtitle:"Separate scaffold; currently grows the ball on wall hits.", hasSpikes:false, hasOpening:true, hasRotation:true, specificGroup:"ctrlGroupGrowth", specificHeader:"GROW MODE - DRAFT", defaultHookTop:"WATCH THE BALL GROW!", defaultHookBot:"", preset:{circleRadius:450,outlineThickness:12,openingSize:18,spikeHeight:0,spikeWidth:84,ballRadius:32,gravity:0.76,minBounce:4.6,initSpeedX:4.5,rotSpeed:0.55,spikeCov:"full",spikeStyle:"hollow"} },
+    { id:"shatter", name:"Shatter (Draft)", subtitle:"Separate scaffold; currently starts from Destruction bead collisions.", hasSpikes:false, hasOpening:false, hasRotation:true, specificGroup:"ctrlGroupDestruction", specificHeader:"SHATTER MODE - DRAFT", defaultHookTop:"WAIT FOR THE SHATTER!", defaultHookBot:"", preset:{circleRadius:460,outlineThickness:10,openingSize:0,spikeHeight:0,spikeWidth:84,ballRadius:26,gravity:0.75,minBounce:4.6,initSpeedX:4.5,rotSpeed:0.45,spikeCov:"full",spikeStyle:"hollow"} },
+    { id:"portal", name:"Portal (Draft)", subtitle:"Separate scaffold; currently starts from Multiply Gates portal and gate behavior.", hasSpikes:true, hasOpening:true, hasRotation:false, specificGroup:"ctrlGroupMultiplyGates", specificHeader:"PORTAL MODE - DRAFT", defaultHookTop:"WHERE WILL THE PORTAL SEND IT?", defaultHookBot:"", preset:{circleRadius:460,outlineThickness:8,openingSize:35,spikeHeight:32,spikeWidth:46,ballRadius:22,gravity:0.68,minBounce:4.3,initSpeedX:4.0,rotSpeed:0,spikeCov:"right_arc",spikeStyle:"rainbow"} }
+
 ];
 
 const COLOR_THEMES = {
